@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import cytoscape, { Core } from 'cytoscape';
 import { PlotPoint, Scene, ZoomLevel, Project, CytoscapeNodeData, CytoscapeEdgeData } from '@/types/story';
 import PropertyPanel from './PropertyPanel';
@@ -8,9 +8,14 @@ import PropertyPanel from './PropertyPanel';
 interface CanvasProps {
   project: Project;
   onProjectUpdate: (project: Project) => void;
+  onZoomToFit?: () => void;
 }
 
-const Canvas: React.FC<CanvasProps> = ({ project, onProjectUpdate }) => {
+export interface CanvasHandle {
+  handleZoomToFit: () => void;
+}
+
+const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate }, ref) => {
   const cyRef = useRef<HTMLDivElement>(null);
   const [cy, setCy] = useState<Core | null>(null);
   const [currentZoom, setCurrentZoom] = useState<ZoomLevel>(project.currentZoomLevel);
@@ -793,6 +798,113 @@ const Canvas: React.FC<CanvasProps> = ({ project, onProjectUpdate }) => {
     }, 100);
   };
 
+  // Handle zoom to fit functionality
+  const handleZoomToFit = () => {
+    if (!cy) return;
+
+    const currentActPlotPoints = project.plotPoints.filter(pp => pp.actId === project.currentActId);
+    
+    if (currentActPlotPoints.length === 0) {
+      // No plot points in current act, just center the view with animation
+      cy.animate({
+        fit: { eles: cy.nodes(), padding: 50 }
+      }, {
+        duration: 500,
+        easing: 'ease-out'
+      });
+      return;
+    }
+
+    // Check if there's a selected node
+    const selectedNodes = cy.$(':selected');
+    
+    if (selectedNodes.length > 0) {
+      // Zoom to selected plot point or scene
+      const selectedNode = selectedNodes[0];
+      const nodeType = selectedNode.data('type');
+      
+      if (nodeType === 'plot-point') {
+        // Zoom to the plot point and its scenes if expanded
+        const plotPointId = selectedNode.id();
+        let nodesToFit = selectedNode;
+        
+        // If this plot point is expanded, include its scenes
+        if (expandedPlotPoint === plotPointId) {
+          const connectedScenes = selectedNode.connectedEdges().connectedNodes().filter(node => 
+            node.data('type') === 'scene'
+          );
+          nodesToFit = nodesToFit.union(connectedScenes);
+        }
+        
+        cy.animate({
+          fit: { eles: nodesToFit, padding: 50 }
+        }, {
+          duration: 500,
+          easing: 'ease-out'
+        });
+      } else if (nodeType === 'scene') {
+        // Zoom to the scene and its parent plot point
+        const parentPlotPoint = selectedNode.connectedEdges().connectedNodes().filter(node => 
+          node.data('type') === 'plot-point'
+        );
+        const nodesToFit = selectedNode.union(parentPlotPoint);
+        cy.animate({
+          fit: { eles: nodesToFit, padding: 50 }
+        }, {
+          duration: 500,
+          easing: 'ease-out'
+        });
+      } else {
+        // For character, setting, or item nodes, zoom to their parent scene
+        const parentScene = selectedNode.connectedEdges().connectedNodes().filter(node => 
+          node.data('type') === 'scene'
+        );
+        if (parentScene.length > 0) {
+          cy.animate({
+            fit: { eles: parentScene, padding: 50 }
+          }, {
+            duration: 500,
+            easing: 'ease-out'
+          });
+        } else {
+          cy.animate({
+            fit: { eles: selectedNode, padding: 50 }
+          }, {
+            duration: 500,
+            easing: 'ease-out'
+          });
+        }
+      }
+    } else {
+      // No selection, fit all plot points in current act
+      const plotPointNodes = cy.nodes().filter(node => 
+        node.data('type') === 'plot-point' && 
+        currentActPlotPoints.some(pp => pp.id === node.id())
+      );
+      
+      if (plotPointNodes.length > 0) {
+        cy.animate({
+          fit: { eles: plotPointNodes, padding: 80 } // Slightly more padding for overview
+        }, {
+          duration: 500,
+          easing: 'ease-out'
+        });
+      } else {
+        cy.animate({
+          fit: { eles: cy.nodes(), padding: 50 }
+        }, {
+          duration: 500,
+          easing: 'ease-out'
+        });
+      }
+    }
+  };
+
+  // Expose handleZoomToFit through ref
+  useImperativeHandle(ref, () => ({
+    handleZoomToFit
+  }));
+
   // Add keyboard shortcut for undo (Ctrl+Z)
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -879,7 +991,7 @@ const Canvas: React.FC<CanvasProps> = ({ project, onProjectUpdate }) => {
       
       {/* Zoom level indicator */}
       <div className="absolute top-4 left-4 bg-white rounded-lg shadow-md px-3 py-2">
-        <span className="text-sm font-medium text-gray-700">
+        <span className="text-sm font-medium text-gray-900">
           {currentZoom.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
         </span>
       </div>
@@ -920,11 +1032,11 @@ const Canvas: React.FC<CanvasProps> = ({ project, onProjectUpdate }) => {
             <h3 className="text-lg font-semibold text-gray-900 mb-2">
               Start Your Story
             </h3>
-            <p className="text-gray-600 mb-4">
+            <p className="text-gray-900 mb-4">
               Click anywhere on the canvas to create your first plot point. 
               You can then add details and scenes to build your story structure.
             </p>
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-gray-600">
               <p><strong>Tip:</strong> Single-click any node to edit it, double-click to zoom in</p>
             </div>
           </div>
@@ -948,6 +1060,8 @@ const Canvas: React.FC<CanvasProps> = ({ project, onProjectUpdate }) => {
       )}
     </div>
   );
-};
+});
+
+Canvas.displayName = 'Canvas';
 
 export default Canvas;

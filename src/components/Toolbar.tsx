@@ -8,9 +8,10 @@ interface ToolbarProps {
   project: Project;
   onProjectUpdate: (project: Project) => void;
   onZoomChange: (zoomLevel: ZoomLevel) => void;
+  onZoomToFit?: () => void;
 }
 
-const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChange }) => {
+const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChange, onZoomToFit }) => {
   
   const handleZoomToOverview = () => {
     const updatedProject = {
@@ -73,7 +74,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 project.currentZoomLevel === ZoomLevel.STORY_OVERVIEW
                   ? 'bg-blue-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-200'
+                  : 'text-gray-900 hover:bg-gray-200'
               }`}
               title="Story Overview - See all plot points"
             >
@@ -83,7 +84,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 project.currentZoomLevel === ZoomLevel.PLOT_POINT_FOCUS
                   ? 'bg-blue-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-200'
+                  : 'text-gray-900 hover:bg-gray-200'
               }`}
               title="Plot Point Focus - View scenes for selected plot point"
               disabled={!project.focusedElementId}
@@ -94,7 +95,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
               className={`px-3 py-1 text-sm font-medium rounded-md transition-colors ${
                 project.currentZoomLevel === ZoomLevel.SCENE_DETAIL
                   ? 'bg-blue-600 text-white'
-                  : 'text-gray-700 hover:bg-gray-200'
+                  : 'text-gray-900 hover:bg-gray-200'
               }`}
               title="Scene Detail - View detailed scene information"
               disabled={!project.focusedElementId}
@@ -103,12 +104,25 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
             </button>
           </div>
 
+          {/* Zoom to Fit button */}
+          <button
+            onClick={onZoomToFit}
+            className="flex items-center px-3 py-2 text-sm font-medium text-gray-900 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            title="Zoom to fit all plot points or selected plot point"
+          >
+            <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 10l4 4m0-4l-4 4" />
+            </svg>
+            Zoom to Fit
+          </button>
+
           {/* Search functionality (PRD Section 4.4) */}
           <div className="relative">
             <input
               type="text"
               placeholder="Search story elements..."
-              className="pl-8 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="pl-8 pr-4 py-2 text-sm border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
             />
             <svg
               className="absolute left-2 top-2.5 h-4 w-4 text-gray-400"
@@ -145,7 +159,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
           
           <button
             onClick={handleSave}
-            className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            className="flex items-center px-3 py-2 text-sm font-medium text-gray-900 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
             title="Save project locally"
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -156,7 +170,7 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
           
           <button
             onClick={handleLoad}
-            className="flex items-center px-3 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            className="flex items-center px-3 py-2 text-sm font-medium text-gray-900 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
             title="Load saved project"
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -181,13 +195,13 @@ const Toolbar: React.FC<ToolbarProps> = ({ project, onProjectUpdate, onZoomChang
       {/* Quick stats - Current Act and Total */}
       <div className="mt-3 flex items-center justify-between text-sm text-gray-600">
         <div className="flex items-center space-x-6">
-          <span className="font-medium text-gray-700">{currentActName}:</span>
+          <span className="font-medium text-gray-900">{currentActName}:</span>
           <span>{currentActPlotPoints.length} plot points</span>
           <span>{currentActScenes} scenes</span>
           <span>{currentActCharacters} characters</span>
         </div>
         <div className="flex items-center space-x-6">
-          <span className="font-medium text-gray-700">Total Story:</span>
+          <span className="font-medium text-gray-900">Total Story:</span>
           <span>{totalPlotPoints} plot points</span>
           <span>{totalScenes} scenes</span>
           <span>{totalCharacters} characters</span>

@@ -16,6 +16,14 @@ interface NewActDialogProps {
   existingActNames: string[];
 }
 
+interface EditActDialogProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onUpdateAct: (actId: string, name: string, description?: string) => void;
+  act: Act | null;
+  existingActNames: string[];
+}
+
 const NewActDialog: React.FC<NewActDialogProps> = ({ 
   isOpen, 
   onClose, 
@@ -63,7 +71,7 @@ const NewActDialog: React.FC<NewActDialogProps> = ({
         
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="actName" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="actName" className="block text-sm font-medium text-gray-900 mb-2">
               Act Name *
             </label>
             <input
@@ -86,7 +94,7 @@ const NewActDialog: React.FC<NewActDialogProps> = ({
           </div>
           
           <div className="mb-6">
-            <label htmlFor="actDescription" className="block text-sm font-medium text-gray-700 mb-2">
+            <label htmlFor="actDescription" className="block text-sm font-medium text-gray-900 mb-2">
               Description (optional)
             </label>
             <textarea
@@ -120,11 +128,124 @@ const NewActDialog: React.FC<NewActDialogProps> = ({
   );
 };
 
+const EditActDialog: React.FC<EditActDialogProps> = ({ 
+  isOpen, 
+  onClose, 
+  onUpdateAct, 
+  act,
+  existingActNames 
+}) => {
+  const [actName, setActName] = useState('');
+  const [actDescription, setActDescription] = useState('');
+  const [nameError, setNameError] = useState('');
+
+  // Initialize form when act changes
+  React.useEffect(() => {
+    if (act) {
+      setActName(act.name);
+      setActDescription(act.description || '');
+      setNameError('');
+    }
+  }, [act]);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!act) return;
+    
+    const trimmedName = actName.trim();
+    if (!trimmedName) {
+      setNameError('Act name is required');
+      return;
+    }
+    
+    // Check if name exists (excluding current act)
+    const otherActNames = existingActNames.filter(name => name !== act.name);
+    if (otherActNames.includes(trimmedName)) {
+      setNameError('An act with this name already exists');
+      return;
+    }
+    
+    onUpdateAct(act.id, trimmedName, actDescription.trim() || undefined);
+    setNameError('');
+    onClose();
+  };
+
+  const handleClose = () => {
+    setNameError('');
+    onClose();
+  };
+
+  if (!isOpen || !act) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">Edit Act</h2>
+        
+        <form onSubmit={handleSubmit}>
+          <div className="mb-4">
+            <label htmlFor="editActName" className="block text-sm font-medium text-gray-900 mb-2">
+              Act Name *
+            </label>
+            <input
+              type="text"
+              id="editActName"
+              value={actName}
+              onChange={(e) => {
+                setActName(e.target.value);
+                setNameError('');
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              placeholder="e.g., Act I, Setup, Inciting Incident"
+              autoFocus
+            />
+            {nameError && (
+              <p className="mt-1 text-sm text-red-600">{nameError}</p>
+            )}
+          </div>
+          
+          <div className="mb-6">
+            <label htmlFor="editActDescription" className="block text-sm font-medium text-gray-900 mb-2">
+              Description (optional)
+            </label>
+            <textarea
+              id="editActDescription"
+              value={actDescription}
+              onChange={(e) => setActDescription(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              placeholder="Brief description of this act's purpose"
+              rows={3}
+            />
+          </div>
+          
+          <div className="flex justify-end space-x-3">
+            <button
+              type="button"
+              onClick={handleClose}
+              className="px-4 py-2 text-gray-900 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              Update Act
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 interface ActContextMenuProps {
   isOpen: boolean;
   position: { x: number; y: number };
   act: Act;
   onClose: () => void;
+  onEdit: (act: Act) => void;
   onRename: (act: Act) => void;
   onDuplicate: (act: Act) => void;
   onDelete: (act: Act) => void;
@@ -136,6 +257,7 @@ const ActContextMenu: React.FC<ActContextMenuProps> = ({
   position,
   act,
   onClose,
+  onEdit,
   onRename,
   onDuplicate,
   onDelete,
@@ -161,10 +283,23 @@ const ActContextMenu: React.FC<ActContextMenuProps> = ({
       >
         <button
           onClick={() => {
+            onEdit(act);
+            onClose();
+          }}
+          className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 flex items-center"
+        >
+          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+          </svg>
+          Edit
+        </button>
+        
+        <button
+          onClick={() => {
             onRename(act);
             onClose();
           }}
-          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+          className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 flex items-center"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
@@ -177,7 +312,7 @@ const ActContextMenu: React.FC<ActContextMenuProps> = ({
             onDuplicate(act);
             onClose();
           }}
-          className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center"
+          className="w-full px-4 py-2 text-left text-sm text-gray-900 hover:bg-gray-100 flex items-center"
         >
           <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -213,6 +348,8 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
   onActChange 
 }) => {
   const [showNewActDialog, setShowNewActDialog] = useState(false);
+  const [showEditActDialog, setShowEditActDialog] = useState(false);
+  const [editingAct, setEditingAct] = useState<Act | null>(null);
   const [contextMenu, setContextMenu] = useState<{
     isOpen: boolean;
     position: { x: number; y: number };
@@ -306,6 +443,25 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
 
     onProjectUpdate(updatedProject);
     setRenameActId(null);
+  };
+
+  const handleEdit = (act: Act) => {
+    setEditingAct(act);
+    setShowEditActDialog(true);
+  };
+
+  const handleUpdateAct = (actId: string, name: string, description?: string) => {
+    const updatedProject: Project = {
+      ...project,
+      acts: project.acts.map(act =>
+        act.id === actId ? { ...act, name, description } : act
+      ),
+      lastModified: new Date()
+    };
+
+    onProjectUpdate(updatedProject);
+    setShowEditActDialog(false);
+    setEditingAct(null);
   };
 
   const handleDuplicate = (act: Act) => {
@@ -406,7 +562,7 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
                       setRenameActId(null);
                     }
                   }}
-                  className="px-3 py-2 text-sm font-medium border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="px-3 py-2 text-sm font-medium border border-blue-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900"
                   autoFocus
                 />
               ) : (
@@ -472,12 +628,25 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
         existingActNames={project.acts.map(act => act.name)}
       />
 
+      {/* Edit act dialog */}
+      <EditActDialog
+        isOpen={showEditActDialog}
+        onClose={() => {
+          setShowEditActDialog(false);
+          setEditingAct(null);
+        }}
+        onUpdateAct={handleUpdateAct}
+        act={editingAct}
+        existingActNames={project.acts.map(act => act.name)}
+      />
+
       {/* Context menu */}
       <ActContextMenu
         isOpen={contextMenu.isOpen}
         position={contextMenu.position}
         act={contextMenu.act!}
         onClose={closeContextMenu}
+        onEdit={handleEdit}
         onRename={handleRename}
         onDuplicate={handleDuplicate}
         onDelete={handleDelete}

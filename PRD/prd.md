@@ -1,7 +1,7 @@
 # Product Requirements Document: Campfire App Prototype
 ## Visual Mind Map Writing Tool
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Date:** July 7, 2025  
 **Product Owner:** [Your Name]  
 **Status:** Requirements Definition
@@ -11,9 +11,10 @@
 ## 1. Executive Summary
 
 ### Product Vision
-A revolutionary writing application that transforms story development from linear scene-based organization to a visual, plot-centric mind map interface. Writers can organize their stories by acts, with each act containing its own visual canvas where plot points and scenes are mapped as interconnected nodes.
+A revolutionary writing application that transforms story development from linear scene-based organization to a visual, plot-centric mind map interface. Writers can manage multiple projects (stories/books) from a central homepage, with each project containing its own act-based organization system. Within each project, writers can organize their stories by acts, with each act containing its own visual canvas where plot points and scenes are mapped as interconnected nodes.
 
 ### Core Value Proposition
+- **Project Management**: Central homepage for managing multiple writing projects
 - **Act-Based Organization**: Separate visual canvases for each story act, reducing complexity
 - **Plot-First Thinking**: Organize stories around plot points, not scenes
 - **Visual Context**: Never lose sight of story structure while working on details
@@ -25,14 +26,15 @@ A revolutionary writing application that transforms story development from linea
 ## 2. Problem Statement
 
 ### Current Pain Points with Existing Tools
-1. **Too Many Clicks**: Critical information buried behind multiple navigation layers
-2. **Lack of Visual Structure**: Folder-based organization obscures story relationships
-3. **Scene Disconnection**: Individual scenes feel isolated without plot context
-4. **Cognitive Load**: Writers must remember location and relationship of story elements
-5. **Act Confusion**: All story elements crammed into one view creates visual overwhelm
+1. **Project Isolation**: No central place to manage multiple writing projects
+2. **Too Many Clicks**: Critical information buried behind multiple navigation layers
+3. **Lack of Visual Structure**: Folder-based organization obscures story relationships
+4. **Scene Disconnection**: Individual scenes feel isolated without plot context
+5. **Cognitive Load**: Writers must remember location and relationship of story elements
+6. **Act Confusion**: All story elements crammed into one view creates visual overwhelm
 
 ### User Frustration Quote
-*"I think in plot points, not individual scenes. I don't want to click through blind folders—I want to recognize scenes by where they live in the story structure visually. But I also don't want to see my entire novel's complexity at once—I need to focus on one act at a time."*
+*"I work on multiple stories at once, but every writing tool forces me to juggle separate files or projects. I want one place to see all my stories and jump into whichever one I'm feeling inspired to work on. Once I'm in a story, I think in plot points, not individual scenes. I don't want to click through blind folders—I want to recognize scenes by where they live in the story structure visually. But I also don't want to see my entire novel's complexity at once—I need to focus on one act at a time."*
 
 ---
 
@@ -53,7 +55,81 @@ A revolutionary writing application that transforms story development from linea
 
 ## 4. Core Features & Requirements
 
-### 4.1 Act-Based Canvas System
+### 4.1 Project Management Homepage
+
+#### Primary Requirement
+**Central Project Dashboard**: A homepage where users can view, create, and manage multiple writing projects
+
+**User Stories:**
+- As a writer, I want to see all my writing projects on one homepage so I can choose which story to work on
+- As a writer, I want to create new projects quickly so I can capture inspiration for new stories
+- As a writer, I want to see project metadata (last modified, word count, act count) so I can prioritize my work
+- As a writer, I want to organize my projects visually so I can find them easily
+- As a writer, I want to duplicate existing projects so I can explore alternative story directions
+
+**Acceptance Criteria:**
+- Homepage displays all projects as visual cards/tiles
+- Each project card shows title, last modified date, and key metrics
+- "New Project" button creates a new project with default settings
+- Projects can be organized, sorted, and filtered
+- Clicking a project navigates to that project's act-based canvas system
+- Projects can be renamed, duplicated, or deleted from the homepage
+
+### 4.2 Project Creation & Setup
+
+#### Primary Requirement
+**Streamlined Project Initialization**: Quick setup flow for new writing projects
+
+**User Stories:**
+- As a writer, I want to create a new project by clicking one button and entering a title
+- As a writer, I want new projects to start with a default act structure so I can begin immediately
+- As a writer, I want to choose from project templates (novel, screenplay, short story) to get appropriate starting structure
+- As a writer, I want to import existing projects from other tools or file formats
+
+**Acceptance Criteria:**
+- New project dialog requires only a project title to create
+- Projects initialize with "Act 1" canvas by default
+- Optional project templates provide pre-configured act structures
+- Project creation is under 3 clicks from homepage
+- Projects are immediately accessible after creation
+
+### 4.3 Project Navigation & Organization
+
+#### Primary Requirement
+**Efficient Project Discovery**: Tools for finding and organizing multiple projects
+
+**User Stories:**
+- As a writer, I want to search across all my projects so I can find specific stories quickly
+- As a writer, I want to tag projects by genre, status, or priority so I can filter them
+- As a writer, I want to see recent projects first so I can continue where I left off
+- As a writer, I want to archive completed projects so they don't clutter my active workspace
+
+**Acceptance Criteria:**
+- Global search searches across project titles and metadata
+- Project filtering by tags, status, and creation date
+- Recently accessed projects appear at top of homepage
+- Archive/unarchive functionality for project organization
+- Breadcrumb navigation showing: Homepage → Project → Act
+
+### 4.4 Project Metadata & Analytics
+
+#### Primary Requirement
+**Project Progress Tracking**: Visual indicators of project status and progress
+
+**User Stories:**
+- As a writer, I want to see how many acts, plot points, and scenes each project contains
+- As a writer, I want to track my writing progress across all projects
+- As a writer, I want to see when I last worked on each project
+- As a writer, I want to set project goals and track completion
+
+**Acceptance Criteria:**
+- Project cards display act count, plot point count, and scene count
+- Last modified timestamp visible on each project
+- Progress indicators for project completion status
+- Optional project goals with progress tracking
+- Export statistics for individual projects
+
+### 4.5 Act-Based Canvas System
 
 #### Primary Requirement
 **Separate Act Canvases**: Each story act exists as its own independent visual graph canvas
@@ -71,7 +147,7 @@ A revolutionary writing application that transforms story development from linea
 - Users can create unlimited acts with descriptive names
 - Act canvases load independently for performance
 
-### 4.2 Act Navigation System
+### 4.6 Act Navigation System
 
 #### Primary Requirement
 **Top Navigation Bar**: Horizontal tab system for act switching and management
@@ -89,7 +165,7 @@ A revolutionary writing application that transforms story development from linea
 - Tabs support right-click context menus for act management
 - Navigation bar is always visible and accessible regardless of zoom level
 
-### 4.3 New Act Creation
+### 4.7 New Act Creation
 
 #### Primary Requirement
 **Dynamic Act Creation**: Users can create new acts with blank canvases at any time
@@ -107,7 +183,7 @@ A revolutionary writing application that transforms story development from linea
 - Acts can be reordered by dragging tabs in the navigation bar
 - Default act naming follows pattern: "Act 1", "Act 2", etc. (but editable)
 
-### 4.4 Plot-First Visual Architecture (Per Act)
+### 4.8 Plot-First Visual Architecture (Per Act)
 
 #### Primary Requirement
 **Central Plot Point Hubs**: Each major plot point serves as a central node within its act's canvas
@@ -124,7 +200,7 @@ A revolutionary writing application that transforms story development from linea
 - Plot point labels are always visible without hovering
 - Each act canvas can contain multiple plot points without overcrowding
 
-### 4.5 Scene Constellation System (Per Act)
+### 4.9 Scene Constellation System (Per Act)
 
 #### Primary Requirement
 **Connected Scene Bubbles**: Scenes orbit around their parent plot points within each act
@@ -142,7 +218,7 @@ A revolutionary writing application that transforms story development from linea
 - Scene bubbles can be repositioned around their parent plot point within the act
 - Scenes cannot be moved between acts via dragging (intentional constraint)
 
-### 4.6 Nested Detail Layers
+### 4.10 Nested Detail Layers
 
 #### Primary Requirement
 **Expandable Information Hierarchy**: Each story element can reveal progressively detailed information
@@ -176,7 +252,7 @@ Act
 - Users can expand multiple detail layers simultaneously
 - Breadcrumb navigation shows current detail level
 
-### 4.7 Fast Reference System (Cross-Act)
+### 4.11 Fast Reference System (Cross-Act)
 
 #### Primary Requirement
 **Zero-Navigation Information Access**: All story elements within an act are visually accessible without folder navigation
@@ -193,7 +269,7 @@ Act
 - Quick keyboard shortcuts for act switching (Ctrl+1, Ctrl+2, etc.)
 - Search results can automatically switch to the correct act
 
-### 4.8 Zoom & Focus Controls (Per Act)
+### 4.12 Zoom & Focus Controls (Per Act)
 
 #### Primary Requirement
 **Multi-Level Zoom Interface**: Users can zoom from act overview to detailed scene work within each act
@@ -222,23 +298,25 @@ Act
 ### 5.1 Platform Requirements
 - **Primary Framework**: Next.js 14+ with TypeScript
 - **Graph Visualization**: Multiple Cytoscape.js instances for act-based canvases
-- **State Management**: Zustand or Redux for managing multiple act states
-- **Styling**: Tailwind CSS for responsive design including navigation tabs
+- **State Management**: Zustand or Redux for managing multiple projects and act states
+- **Styling**: Tailwind CSS for responsive design including homepage and navigation
+- **Routing**: Next.js App Router for project navigation (/ → /project/[id] → /project/[id]/act/[actId])
 - **Future Platforms**: Desktop (Electron), Mobile (React Native)
 - **Browser Support**: Chrome, Firefox, Safari, Edge (latest 2 versions)
 
 ### 5.2 Technology Stack Rationale
 
-#### Multiple Cytoscape.js Instances
-- **Act Isolation**: Each act maintains its own graph instance for performance and clarity
-- **Memory Management**: Inactive act canvases can be optimized or virtualized
-- **Independent State**: Each act's zoom level, position, and selection state preserved
-- **Performance**: Smaller graphs per act load faster than one massive graph
+#### Next.js App Router Enhancement
+- **Project Routing**: Clean URL structure for projects and acts (/project/story-1/act/act-1)
+- **Dynamic Loading**: Each project loads independently for better performance
+- **SEO Benefits**: Individual project pages can be indexed and shared
+- **Back Button Support**: Browser navigation works naturally between homepage and projects
 
 #### State Management Enhancement
-- **Act Management**: Central store for managing active act, act metadata, and navigation state
-- **Cross-Act Operations**: Coordinated operations like global search across multiple graph instances
-- **Persistence**: Each act's canvas state saved independently for faster loading
+- **Project Management**: Central store for managing all projects, active project, and homepage state
+- **Project Isolation**: Each project maintains its own state bubble for acts and canvases
+- **Cross-Project Operations**: Global search, project creation, and homepage filtering
+- **Persistence**: Project-level auto-save with project-specific storage keys
 
 #### Next.js with TypeScript
 - **Component Architecture**: React's component-based structure ideal for reusable UI elements (nodes, edges, menus)
@@ -260,41 +338,71 @@ Act
 - **Declarative Approach**: Libraries like Nivo or ECharts offer more guided development if needed
 
 ### 5.3 Performance Requirements
-- **Act Switching**: Transition between acts < 500ms
+- **Homepage Load**: Project list loads in < 1 second
+- **Project Switching**: Navigation between projects < 500ms
+- **Act Switching**: Transition between acts within project < 500ms
 - **Canvas Load**: Individual act canvas load < 1 second
-- **Memory Usage**: Efficient management of multiple Cytoscape.js instances
-- **Zoom Performance**: Smooth 60fps animations within each act canvas
-- **Data Capacity**: Support for 20+ acts, 50+ plot points per act, 500+ scenes per act
+- **Memory Usage**: Efficient management of multiple projects and Cytoscape.js instances
+- **Data Capacity**: Support for 50+ projects, 20+ acts per project, 50+ plot points per act
 
 ### 5.4 Data Requirements
-- **File Format**: JSON-based project files with act-separated structure
-- **Act Structure**: Hierarchical data model with acts as top-level containers
-- **Type Definitions**: Strongly typed data models for acts, plot points, scenes, characters
-- **Export Options**: PDF, Word, Final Draft (with act separation), plain text
-- **Backup**: Cloud sync with act-level granularity for efficient updates
+- **File Format**: JSON-based project files with hierarchical structure
+- **Project Structure**: Top-level project metadata with nested act-separated structure
+- **Type Definitions**: Strongly typed data models for projects, acts, plot points, scenes
+- **Storage**: Local storage for project list, individual project files for detailed data
+- **Export Options**: Project-specific exports (PDF, Word, Final Draft), cross-project reports
+- **Backup**: Cloud sync with project-level granularity for efficient updates
 
 ### 5.5 Development Architecture
 
 #### Component Structure
 ```typescript
-// Core component hierarchy
+// Enhanced component hierarchy with project management
 App
-├── ActNavigationBar (act tabs and management)
-├── ActCanvas (Cytoscape.js container for active act)
-├── ActManager (create/edit/delete acts)
-├── Toolbar (zoom controls, search across acts)
-├── NodeDetails (expandable information panel)
-├── ContextMenu (right-click options)
-└── PropertyPanel (editing interface)
+├── Homepage (project management dashboard)
+│   ├── ProjectCard (individual project display)
+│   ├── ProjectSearch (global project search)
+│   ├── ProjectFilters (filtering and sorting)
+│   └── NewProjectModal (project creation flow)
+├── ProjectLayout (wrapper for project-specific features)
+│   ├── ProjectHeader (project title and metadata)
+│   ├── ActNavigationBar (act tabs and management)
+│   ├── ActCanvas (Cytoscape.js container for active act)
+│   ├── ActManager (create/edit/delete acts)
+│   ├── Toolbar (zoom controls, search within project)
+│   ├── NodeDetails (expandable information panel)
+│   ├── ContextMenu (right-click options)
+│   └── PropertyPanel (editing interface)
+└── SharedComponents (breadcrumbs, navigation, etc.)
 ```
 
 #### Data Models
 ```typescript
+interface ProjectList {
+  projects: ProjectMetadata[];
+  activeProjectId?: string;
+  filters: ProjectFilters;
+}
+
+interface ProjectMetadata {
+  id: string;
+  title: string;
+  createdAt: Date;
+  lastModified: Date;
+  actCount: number;
+  plotPointCount: number;
+  sceneCount: number;
+  tags: string[];
+  status: 'active' | 'archived' | 'completed';
+  template?: 'novel' | 'screenplay' | 'short-story';
+}
+
 interface Story {
   id: string;
   title: string;
   acts: Act[];
   activeActId: string;
+  metadata: ProjectMetadata;
 }
 
 interface Act {
@@ -334,55 +442,81 @@ interface Scene {
 
 ## 6. User Experience Requirements
 
-### 6.1 Act Navigation Design
+### 6.1 Homepage Design
+- **Project Grid**: Responsive card layout for project display
+- **Quick Actions**: Prominent "New Project" button and search bar
+- **Visual Hierarchy**: Clear distinction between project management and project content
+- **Loading States**: Smooth loading animations for project cards and navigation
+- **Empty State**: Engaging onboarding for users with no projects
+
+### 6.2 Project Navigation Experience
+- **Breadcrumb Navigation**: Clear path showing Homepage → Project → Act
+- **Back Navigation**: Browser back button returns to homepage from projects
+- **Quick Switching**: Keyboard shortcuts or menu for rapid project switching
+- **Context Preservation**: Returning to a project remembers last active act and position
+
+### 6.3 Project Creation Flow
+- **Minimal Friction**: Single-step creation with just project title required
+- **Template Selection**: Optional templates with preview of act structure
+- **Immediate Access**: New projects open directly to Act 1 canvas
+- **Guided Setup**: Optional onboarding for new users
+
+### 6.4 Cross-Project Features
+- **Global Search**: Search across all projects with project context in results
+- **Project Analytics**: Dashboard view of writing progress across all projects
+- **Export Options**: Individual project exports or cross-project reports
+- **Import Tools**: Import existing projects from files or other applications
+
+### 6.5 Act Navigation Design
 - **Tab System**: Horizontal tabs with clear visual hierarchy
 - **Active State**: Distinct styling for currently active act
 - **Overflow Handling**: Horizontal scrolling for many acts with scroll indicators
 - **Quick Access**: Keyboard shortcuts for rapid act switching
 - **Visual Feedback**: Smooth transitions between act canvases
 
-### 6.2 Act Management Experience
+### 6.6 Act Management Experience
 - **Creation Flow**: Simple modal dialog for new act creation
 - **Naming System**: Intuitive default naming with easy customization
 - **Reordering**: Drag-and-drop tab reordering with visual feedback
 - **Deletion Safeguards**: Confirmation dialogs for destructive actions
 - **Duplication**: Option to duplicate acts with all contents
 
-### 6.3 Cross-Act Features
-- **Global Search**: Search results show act context and enable quick navigation
-- **Character Tracking**: Character information can span multiple acts
-- **Timeline Integration**: Optional timeline view showing all acts in sequence
-- **Export Coordination**: Export options that respect act boundaries
-
-### 6.4 Visual Design Principles
-- **Act Separation**: Clear visual distinction between act navigation and canvas
-- **Consistent Iconography**: Clear visual language for different story elements
-- **Color Coding**: Act-specific color schemes with global consistency
-- **Spatial Intelligence**: Use 2D space meaningfully within each act's structure
-
 ---
 
 ## 7. Success Metrics
 
-### 7.1 Act Management Metrics
+### 7.1 Project Management Metrics
+- **Projects per User**: Average number of active projects per user
+- **Project Creation Rate**: How frequently users start new projects
+- **Project Completion Rate**: Percentage of projects that reach defined completion
+- **Homepage Engagement**: Time spent on homepage vs. in project canvases
+- **Project Switching**: Frequency of navigation between different projects
+
+### 7.2 Navigation Efficiency Metrics
+- **Homepage to Project**: Time to navigate from homepage to specific project
+- **Project Discovery**: Success rate of finding specific projects via search/browse
+- **Cross-Project Search**: Usage and effectiveness of global search features
+- **Breadcrumb Usage**: How often users use breadcrumb navigation
+
+### 7.3 Act Management Metrics
 - **Acts per Story**: Average number of acts created per story
 - **Act Switching Frequency**: How often users switch between acts
 - **Act Completion Rate**: Percentage of acts that contain plot points and scenes
 - **Navigation Efficiency**: Time to find information across multiple acts
 
-### 7.2 User Engagement Metrics
+### 7.4 User Engagement Metrics
 - **Time per Act**: Average time spent working within individual acts
 - **Cross-Act Navigation**: Frequency of cross-act searches and references
 - **Act Organization**: How users structure their stories across acts
 - **Canvas Utilization**: How effectively users utilize each act's visual space
 
-### 7.3 Productivity Metrics
+### 7.5 Productivity Metrics
 - **Clicks to Information**: Average clicks to reach specific story elements
 - **Navigation Efficiency**: Time spent navigating vs. writing
 - **Context Switching**: Frequency of zoom level changes
 - **Error Recovery**: Time to recover from accidental navigation
 
-### 7.4 Satisfaction Metrics
+### 7.6 Satisfaction Metrics
 - **User Feedback**: Qualitative feedback on structural clarity
 - **Feature Requests**: Most requested enhancements
 - **Bug Reports**: Issues with visual navigation or data access
@@ -392,29 +526,37 @@ interface Scene {
 
 ## 8. Development Phases
 
-### Phase 1: Core MVP with Act System (Weeks 1-10)
-- Next.js project setup with TypeScript configuration
-- Act navigation bar with tab system and creation flow
-- Multiple Cytoscape.js instances with act-based canvas management
-- Basic plot point and scene creation within acts
-- Act switching with preserved canvas state
-- Local file save/load with act-separated JSON structure
+### Phase 0: Project Management Foundation (Weeks 1-4)
+- Next.js project setup with App Router for project navigation
+- Homepage component with project card layout
+- Basic project creation, editing, and deletion
+- Project metadata storage and retrieval
+- Navigation routing between homepage and projects
+- Project search and filtering functionality
 
-### Phase 2: Enhanced Act Experience (Weeks 11-14)
+### Phase 1: Core MVP with Act System (Weeks 5-14)
+- Next.js project enhancement with TypeScript configuration
+- Project-scoped act navigation bar with tab system
+- Multiple Cytoscape.js instances with project and act-based canvas management
+- Basic plot point and scene creation within project acts
+- Act switching with preserved canvas state per project
+- Local file save/load with project-separated JSON structure
+
+### Phase 2: Enhanced Act Experience (Weeks 15-18)
 - Advanced zoom controls within each act canvas
 - Cross-act search and highlight functionality
 - Act management features (rename, delete, duplicate, reorder)
 - Keyboard shortcuts for act navigation
 - Visual improvements and custom styling for act system
 
-### Phase 3: Cross-Act Features (Weeks 15-18)
+### Phase 3: Cross-Act Features (Weeks 19-22)
 - Global search with act context display
 - Character tracking across multiple acts
 - Export system that respects act boundaries
 - Act-specific color coding and themes
 - Performance optimization for multiple canvas instances
 
-### Phase 4: Advanced Act Features (Weeks 19-22)
+### Phase 4: Advanced Act Features (Weeks 23-26)
 - Timeline view integration across all acts
 - Act templates and structural guidance
 - Collaborative features with act-level permissions
@@ -426,16 +568,18 @@ interface Scene {
 ## 9. Risk Assessment
 
 ### Technical Risks
-- **Multiple Canvas Performance**: Managing multiple Cytoscape.js instances may impact memory usage
-- **State Synchronization**: Coordinating state across multiple act canvases
-- **Act Switching Performance**: Ensuring smooth transitions between large act canvases
-- **Data Complexity**: Managing hierarchical act → plot point → scene relationships
+- **Project Scaling**: Managing multiple projects with multiple canvas instances may impact performance
+- **Navigation Complexity**: Users may get lost in Homepage → Project → Act hierarchy
+- **State Management**: Coordinating state across projects, acts, and canvases
+- **Data Organization**: Managing hierarchical project → act → plot point → scene relationships
+- **Memory Usage**: Multiple projects in memory may impact browser performance
 
 ### User Experience Risks
-- **Act Overwhelm**: Users may create too many acts and lose organization
-- **Navigation Confusion**: Users may forget which act contains specific information
-- **Workflow Disruption**: Act switching may interrupt creative flow
-- **Learning Curve**: Users need to understand act-based organization concept
+- **Project Overwhelm**: Users may create too many projects and lose organization
+- **Context Switching**: Frequent project switching may disrupt creative flow
+- **Navigation Confusion**: Complex hierarchy may confuse users about current location
+- **Homepage Abandonment**: Users may bypass homepage and work in single projects
+- **Feature Discovery**: Project management features may overshadow core writing features
 
 ### Business Risks
 - **Feature Complexity**: Act system may be too complex for simple stories
@@ -447,11 +591,11 @@ interface Scene {
 
 ## 10. Appendices
 
-### Appendix A: Act-Based User Research
-- Survey results on how writers currently organize multi-act stories
-- Interview notes about act-switching workflows and preferences
-- Competitive analysis of act-based writing tools
-- User testing results for act navigation interfaces
+### Appendix A: Project Management User Research
+- Survey results on how writers manage multiple projects and stories
+- Interview notes about project organization and switching workflows
+- Analysis of existing project management patterns in writing tools
+- User testing results for homepage navigation and project discovery
 
 ### Appendix B: Technical Specifications
 - Multiple Cytoscape.js instance management patterns
@@ -460,13 +604,14 @@ interface Scene {
 - Database schema design for hierarchical act structure
 
 ### Appendix C: Design Mockups
+- Homepage and project card designs and interactions
+- Project creation and management flows
+- Cross-project search and reference interfaces
 - Act navigation bar designs and interactions
-- Act creation and management flows
-- Cross-act search and reference interfaces
 - Act-specific visual themes and customization options
 
 ---
 
 **Document End**
 
-*This PRD serves as the foundation for developing a revolutionary writing tool that prioritizes visual story structure organized by acts. The act-based canvas system reduces complexity while maintaining the core value of visual organization and rapid access to story elements. The success of this prototype depends on seamless act navigation while preserving the intuitive mind-map approach within each act's canvas.*
+*This PRD serves as the foundation for developing a revolutionary writing tool that prioritizes project management and visual story structure organized by acts. The project homepage provides a central hub for managing multiple stories, while the act-based canvas system within each project reduces complexity and maintains the core value of visual organization and rapid access to story elements. The success of this prototype depends on seamless navigation between projects and acts while preserving the intuitive mind-map approach within each project's structure.*

@@ -62,13 +62,40 @@ export interface Act {
 export interface Project {
   id: string;
   title: string;
+  description?: string; // Optional project description
+  tags?: string[]; // For categorization and filtering
+  status?: 'draft' | 'in-progress' | 'completed' | 'archived'; // Project status
+  createdDate: Date;
+  lastModified: Date;
+  lastAccessed?: Date; // For sorting by recent activity
+  goals?: {
+    targetWordCount?: number;
+    targetActCount?: number;
+    targetPlotPointCount?: number;
+    deadline?: Date;
+  }; // Optional project goals
   acts: Act[];
   currentActId: string; // Currently active act
   characters: Character[]; // Story-wide characters
   plotPoints: PlotPoint[];
-  lastModified: Date;
   currentZoomLevel: ZoomLevel;
   focusedElementId?: string; // ID of currently focused plot point or scene
+}
+
+// Project metadata for homepage display
+export interface ProjectMetadata {
+  id: string;
+  title: string;
+  description?: string;
+  tags?: string[];
+  status?: 'draft' | 'in-progress' | 'completed' | 'archived';
+  createdDate: Date;
+  lastModified: Date;
+  lastAccessed?: Date;
+  actCount: number;
+  plotPointCount: number;
+  sceneCount: number;
+  characterCount: number;
 }
 
 // Cytoscape.js node and edge data interfaces
