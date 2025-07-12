@@ -5,6 +5,170 @@ import cytoscape, { Core } from 'cytoscape';
 import { PlotPoint, Scene, ZoomLevel, Project, CytoscapeNodeData, CytoscapeEdgeData } from '@/types/story';
 import PropertyPanel from './PropertyPanel';
 
+// Helper function to detect and fix overlapping plot points
+const fixOverlappingPlotPoints = (plotPoints: PlotPoint[]): PlotPoint[] => {
+  const GRID_SIZE = 200;
+  const START_X = 100;
+  const START_Y = 100;
+  const MAX_COLS = 5;
+  
+  // Group plot points by position to find overlaps
+  const positionGroups = new Map<string, PlotPoint[]>();
+  
+  plotPoints.forEach(pp => {
+    const key = `${pp.position.x},${pp.position.y}`;
+    if (!positionGroups.has(key)) {
+      positionGroups.set(key, []);
+    }
+    positionGroups.get(key)!.push(pp);
+  });
+  
+  // Find groups with more than one plot point (overlapping)
+  const overlappingGroups = Array.from(positionGroups.entries())
+    .filter(([key, group]) => group.length > 1);
+  
+  if (overlappingGroups.length === 0) {
+    return plotPoints; // No overlaps, return as-is
+  }
+  
+  console.log(`Found ${overlappingGroups.length} overlapping position groups, fixing...`);
+  
+  // Get all used positions
+  const usedPositions = new Set<string>();
+  plotPoints.forEach(pp => {
+    usedPositions.add(`${pp.position.x},${pp.position.y}`);
+  });
+  
+  // Function to find next available position
+  const findNextAvailablePosition = (): { x: number; y: number } => {
+    let row = 0;
+    let col = 0;
+    
+    while (true) {
+      const x = START_X + (col * GRID_SIZE);
+      const y = START_Y + (row * GRID_SIZE);
+      const key = `${x},${y}`;
+      
+      if (!usedPositions.has(key)) {
+        usedPositions.add(key);
+        return { x, y };
+      }
+      
+      col++;
+      if (col >= MAX_COLS) {
+        col = 0;
+        row++;
+      }
+      
+      // Safety check
+      if (row > 20) {
+        return { x: START_X + Math.random() * 500, y: START_Y + Math.random() * 500 };
+      }
+    }
+  };
+  
+  // Fix overlapping plot points by assigning new positions
+  const updatedPlotPoints = [...plotPoints];
+  
+  overlappingGroups.forEach(([key, group]) => {
+    // Keep the first plot point in its position, move the others
+    for (let i = 1; i < group.length; i++) {
+      const plotPointToMove = group[i];
+      const newPosition = findNextAvailablePosition();
+      
+      const index = updatedPlotPoints.findIndex(pp => pp.id === plotPointToMove.id);
+      if (index !== -1) {
+        updatedPlotPoints[index] = {
+          ...updatedPlotPoints[index],
+          position: newPosition
+        };
+        console.log(`Moved plot point "${plotPointToMove.title}" from ${key} to ${newPosition.x},${newPosition.y}`);
+      }
+    }
+  });
+  
+  return updatedPlotPoints;
+};
+
+// Helper function to detect and fix overlapping scenes within each plot point
+const fixOverlappingScenes = (plotPoints: PlotPoint[]): PlotPoint[] => {
+  const updatedPlotPoints = plotPoints.map(plotPoint => {
+    if (!plotPoint.scenes || plotPoint.scenes.length <= 1) {
+      return plotPoint; // No overlap possible with 0 or 1 scene
+    }
+    
+    // Group scenes by position to find overlaps
+    const positionGroups = new Map<string, typeof plotPoint.scenes>();
+    
+    plotPoint.scenes.forEach(scene => {
+      const position = scene.position || { x: 0, y: 0 };
+      const key = `${position.x},${position.y}`;
+      if (!positionGroups.has(key)) {
+        positionGroups.set(key, []);
+      }
+      positionGroups.get(key)!.push(scene);
+    });
+    
+    // Find groups with more than one scene (overlapping) or scenes at origin
+    const problematicGroups = Array.from(positionGroups.entries())
+      .filter(([key, group]) => group.length > 1 || key === '0,0');
+    
+    if (problematicGroups.length === 0) {
+      return plotPoint; // No overlaps, return as-is
+    }
+    
+    console.log(`Found ${problematicGroups.length} overlapping scene groups in plot point "${plotPoint.title}", fixing...`);
+    
+    // Calculate proper satellite positions for all scenes
+    const updatedScenes = plotPoint.scenes.map((scene, index) => {
+      // Check if this scene is in a problematic group
+      const scenePosition = scene.position || { x: 0, y: 0 };
+      const sceneKey = `${scenePosition.x},${scenePosition.y}`;
+      const isProblematic = problematicGroups.some(([key]) => key === sceneKey);
+      
+      if (isProblematic) {
+        // Recalculate position using satellite positioning
+        const radius = 120;
+        const angle = (index * 2 * Math.PI) / Math.max(plotPoint.scenes.length, 1);
+        const newPosition = {
+          x: plotPoint.position.x + radius * Math.cos(angle),
+          y: plotPoint.position.y + radius * Math.sin(angle)
+        };
+        
+        console.log(`Moved scene "${scene.title}" from ${sceneKey} to ${newPosition.x.toFixed(1)},${newPosition.y.toFixed(1)}`);
+        
+        return {
+          ...scene,
+          position: newPosition
+        };
+      }
+      
+      return scene; // Keep existing position if not problematic
+    });
+    
+    return {
+      ...plotPoint,
+      scenes: updatedScenes
+    };
+  });
+  
+  return updatedPlotPoints;
+};
+
+// Helper function to calculate proper scene position (enhanced version)
+const calculateScenePositionSafe = (
+  plotPointPos: { x: number; y: number }, 
+  sceneIndex: number, 
+  totalScenes: number = 1
+): { x: number; y: number } => {
+  const radius = 120;
+  const angle = (sceneIndex * 2 * Math.PI) / Math.max(totalScenes, 1);
+  return {
+    x: plotPointPos.x + radius * Math.cos(angle),
+    y: plotPointPos.y + radius * Math.sin(angle)
+  };
+};
+
 interface CanvasProps {
   project: Project;
   onProjectUpdate: (project: Project) => void;
@@ -33,6 +197,31 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     setIsMounted(true);
     setLastSaved(new Date()); // Set actual current time once mounted
   }, []);
+
+  // Fix overlapping plot points and scenes when project loads
+  useEffect(() => {
+    if (!project || !project.plotPoints || project.plotPoints.length === 0) {
+      return;
+    }
+    
+    const fixedPlotPoints = fixOverlappingPlotPoints(project.plotPoints);
+    const fixedWithScenes = fixOverlappingScenes(fixedPlotPoints);
+    
+    // If positions were changed, update the project
+    if (JSON.stringify(fixedWithScenes) !== JSON.stringify(project.plotPoints)) {
+      const updatedProject = {
+        ...project,
+        plotPoints: fixedWithScenes,
+        lastModified: new Date()
+      };
+      onProjectUpdate(updatedProject);
+    }
+  }, [project.plotPoints.length]); // Only run when plot points are first loaded or count changes
+
+  // Sync currentZoom state with project's currentZoomLevel
+  useEffect(() => {
+    setCurrentZoom(project.currentZoomLevel);
+  }, [project.currentZoomLevel]);
 
   // Auto-save functionality - save every 10 seconds
   useEffect(() => {
@@ -294,14 +483,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
               id: tempId,
               label: 'New Plot Point',
               type: 'plot-point',
-              color: '#3b82f6',                data: {
-                  id: tempId,
-                  title: 'New Plot Point',
-                  position: { x: position.x, y: position.y },
-                  color: '#3b82f6',
-                  actId: project.currentActId, // Assign to current act
-                  scenes: []
-                }
+              color: '#3b82f6',
+              data: {
+                id: tempId,
+                title: 'New Plot Point',
+                position: { x: position.x, y: position.y },
+                color: '#3b82f6',
+                actId: project.currentActId, // Assign to current act
+                scenes: []
+              }
             },
             position: { x: position.x, y: position.y }
           });
@@ -397,7 +587,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
               parentId: plotPoint.id,
               data: scene
             },
-            position: scene.position || calculateScenePosition(plotPoint.position, plotPoint.scenes.indexOf(scene))
+            position: isValidScenePosition(scene.position) 
+              ? scene.position 
+              : calculateScenePosition(plotPoint.position, plotPoint.scenes.indexOf(scene))
           });
 
           // Edge from plot point to scene
@@ -518,7 +710,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
               parentId: tempNode.id,
               data: scene
             },
-            position: scene.position || calculateScenePosition(tempNode.position, tempNode.scenes.indexOf(scene))
+            position: isValidScenePosition(scene.position) 
+              ? scene.position 
+              : calculateScenePosition(tempNode.position, tempNode.scenes.indexOf(scene))
           });
 
           // Edge from temp plot point to scene
@@ -535,6 +729,11 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     }
 
     return [...nodes, ...edges];
+  };
+
+  // Helper function to check if a scene position is valid (not at origin or undefined)
+  const isValidScenePosition = (position?: { x: number; y: number }): boolean => {
+    return !!(position && (position.x !== 0 || position.y !== 0));
   };
 
   // Calculate position for scenes around plot point (satellite positioning)

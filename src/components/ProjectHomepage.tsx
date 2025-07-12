@@ -1,28 +1,40 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ProjectMetadata } from '@/types/story';
-import { ProjectService } from '@/services/projectService';
+import { Project } from '@/services/projectApiService';
+import { ProjectApiService } from '@/services/projectApiService';
+import { useAuth } from '@/contexts/AuthContext';
+import { socketService } from '@/services/socketService';
 
 interface ProjectHomepageProps {
   onProjectSelect: (projectId: string) => void;
 }
 
 const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) => {
-  const [projects, setProjects] = useState<ProjectMetadata[]>([]);
-  const [filteredProjects, setFilteredProjects] = useState<ProjectMetadata[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showNewProjectDialog, setShowNewProjectDialog] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const { user, logout } = useAuth();
 
   const handleProjectSelect = (projectId: string) => {
     onProjectSelect(projectId);
   };
 
-  // Load projects on component mount
+  // Load projects on component mount and connect socket
   useEffect(() => {
     loadProjects();
+    
+    // Connect to Socket.IO for real-time updates
+    socketService.connect();
+    
+    // Cleanup on unmount
+    return () => {
+      socketService.disconnect();
+    };
   }, []);
 
   // Filter projects when search or filter changes
@@ -30,13 +42,27 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
     filterProjects();
   }, [projects, searchQuery, statusFilter]);
 
-  const loadProjects = () => {
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showUserMenu) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
+  const loadProjects = async () => {
     setIsLoading(true);
     try {
-      // Migrate old project data if it exists
-      ProjectService.migrateOldProject();
-      
-      const allProjects = ProjectService.getAllProjectMetadata();
+      const allProjects = await ProjectApiService.getProjects();
       setProjects(allProjects);
     } catch (error) {
       console.error('Error loading projects:', error);
@@ -50,7 +76,11 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
 
     // Apply search filter
     if (searchQuery.trim()) {
-      filtered = ProjectService.searchProjects(searchQuery);
+      const query = searchQuery.toLowerCase();
+      filtered = projects.filter(project =>
+        project.title.toLowerCase().includes(query) ||
+        project.description?.toLowerCase().includes(query)
+      );
     }
 
     // Apply status filter
@@ -61,28 +91,51 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
     setFilteredProjects(filtered);
   };
 
-  const handleCreateProject = (title: string, template?: 'novel' | 'screenplay' | 'short-story' | 'from-scratch') => {
-    const newProject = ProjectService.createProject(title, template);
-    setShowNewProjectDialog(false);
-    loadProjects(); // Refresh the project list to show the new project
-    // Stay on homepage instead of navigating to the new project
-    // onProjectSelect(newProject.id); // Removed this line
+  const handleCreateProject = async (title: string, template?: 'novel' | 'screenplay' | 'short-story' | 'from-scratch') => {
+    try {
+      const newProject = await ProjectApiService.createProject({ 
+        title,
+        description: '',
+        template: template === 'from-scratch' ? 'FROM_SCRATCH' : 
+                 template === 'novel' ? 'NOVEL' :
+                 template === 'screenplay' ? 'SCREENPLAY' :
+                 template === 'short-story' ? 'SHORT_STORY' : undefined
+      });
+      setShowNewProjectDialog(false);
+      loadProjects(); // Refresh the project list to show the new project
+    } catch (error) {
+      console.error('Error creating project:', error);
+    }
   };
 
-  const handleDuplicateProject = (projectId: string, originalTitle: string) => {
+  const handleDuplicateProject = async (projectId: string, originalTitle: string) => {
     const newTitle = prompt('Enter a name for the duplicated project:', `Copy of ${originalTitle}`);
     if (newTitle && newTitle.trim()) {
-      const duplicatedProject = ProjectService.duplicateProject(projectId, newTitle.trim());
-      if (duplicatedProject) {
+      try {
+        // Get the original project
+        const original = await ProjectApiService.getProject(projectId);
+        
+        // Create new project with similar properties
+        await ProjectApiService.createProject({
+          title: newTitle.trim(),
+          description: original.description
+        });
+        
         loadProjects();
+      } catch (error) {
+        console.error('Error duplicating project:', error);
       }
     }
   };
 
-  const handleDeleteProject = (projectId: string, title: string) => {
+  const handleDeleteProject = async (projectId: string, title: string) => {
     if (confirm(`Are you sure you want to delete "${title}"? This action cannot be undone.`)) {
-      ProjectService.deleteProject(projectId);
-      loadProjects();
+      try {
+        await ProjectApiService.deleteProject(projectId);
+        loadProjects();
+      } catch (error) {
+        console.error('Error deleting project:', error);
+      }
     }
   };
 
@@ -114,17 +167,53 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
             <h1 className="text-3xl font-bold text-gray-900">My Writing Projects</h1>
             <p className="text-gray-600 mt-2">Manage and organize your stories</p>
           </div>
-          <button
-            onClick={() => {
-              setShowNewProjectDialog(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Project
-          </button>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => {
+                setShowNewProjectDialog(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              New Project
+            </button>
+            
+            {/* User Menu */}
+            <div className="relative">
+              <button
+                onClick={() => setShowUserMenu(!showUserMenu)}
+                className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-4 py-2 hover:bg-gray-50 transition-colors"
+              >
+                <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                  {user?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+                </div>
+                <span className="text-gray-900 hidden sm:block">{user?.username || user?.email}</span>
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              
+              {showUserMenu && (
+                <div className="absolute right-0 top-12 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-48">
+                  <div className="px-4 py-2 border-b border-gray-200">
+                    <p className="text-sm font-medium text-gray-900">{user?.username}</p>
+                    <p className="text-sm text-gray-500">{user?.email}</p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      logout();
+                      setShowUserMenu(false);
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Search and Filters */}
@@ -173,9 +262,9 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
           </div>
           <div className="bg-white rounded-lg shadow-sm p-4">
             <div className="text-2xl font-bold text-gray-600">
-              {projects.reduce((sum, p) => sum + p.plotPointCount, 0)}
+              {projects.filter(p => p.status === 'in-progress').length}
             </div>
-            <div className="text-gray-600 text-sm">Total Plot Points</div>
+            <div className="text-gray-600 text-sm">In Progress</div>
           </div>
         </div>
 
@@ -237,7 +326,7 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
 
 // Project Card Component
 interface ProjectCardProps {
-  project: ProjectMetadata;
+  project: Project;
   onSelect: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -318,25 +407,16 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
           <p className="text-gray-600 text-sm mb-4 line-clamp-2">{project.description}</p>
         )}
 
-        {/* Metrics */}
+        {/* Metadata */}
         <div className="grid grid-cols-2 gap-3 mb-4 text-sm">
           <div className="text-gray-500">
-            <span className="font-medium text-gray-900">{project.actCount}</span> acts
-          </div>
-          <div className="text-gray-500">
-            <span className="font-medium text-gray-900">{project.plotPointCount}</span> plot points
-          </div>
-          <div className="text-gray-500">
-            <span className="font-medium text-gray-900">{project.sceneCount}</span> scenes
-          </div>
-          <div className="text-gray-500">
-            <span className="font-medium text-gray-900">{project.characterCount}</span> characters
+            Status: <span className="font-medium text-gray-900">{project.status}</span>
           </div>
         </div>
 
         {/* Last modified */}
         <div className="text-xs text-gray-500 border-t pt-3">
-          Last modified: {formatDate(project.lastModified)}
+          Last modified: {formatDate(new Date(project.updatedAt))}
         </div>
       </div>
 

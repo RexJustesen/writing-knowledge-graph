@@ -4,8 +4,69 @@ import React, { useState, useEffect } from 'react';
 import Canvas, { CanvasHandle } from './Canvas';
 import Toolbar from './Toolbar';
 import ActNavigation from './ActNavigation';
+import { Project as BackendProject, ProjectApiService } from '@/services/projectApiService';
 import { Project, ZoomLevel } from '../types/story';
-import { ProjectService } from '@/services/projectService';
+import { useAuth } from '@/contexts/AuthContext';
+
+// Helper function to generate a unique position for new plot points
+const generateUniquePosition = (existingPlotPoints: any[]): { x: number; y: number } => {
+  const GRID_SIZE = 200; // Distance between plot points
+  const START_X = 100;
+  const START_Y = 100;
+  const MAX_COLS = 5; // Maximum columns before starting a new row
+  
+  // Get all existing positions
+  const existingPositions = existingPlotPoints
+    .map(pp => pp.position)
+    .filter(pos => pos && typeof pos.x === 'number' && typeof pos.y === 'number');
+  
+  // Find a position that doesn't conflict with existing ones
+  let row = 0;
+  let col = 0;
+  
+  while (true) {
+    const x = START_X + (col * GRID_SIZE);
+    const y = START_Y + (row * GRID_SIZE);
+    
+    // Check if this position is too close to any existing position
+    const hasConflict = existingPositions.some(pos => {
+      const distance = Math.sqrt(Math.pow(pos.x - x, 2) + Math.pow(pos.y - y, 2));
+      return distance < GRID_SIZE * 0.8; // Allow some tolerance
+    });
+    
+    if (!hasConflict) {
+      return { x, y };
+    }
+    
+    // Move to next position in grid
+    col++;
+    if (col >= MAX_COLS) {
+      col = 0;
+      row++;
+    }
+    
+    // Safety check to prevent infinite loop
+    if (row > 20) {
+      // Fallback to random position
+      return {
+        x: START_X + Math.random() * 500,
+        y: START_Y + Math.random() * 500
+      };
+    }
+  }
+};
+
+// Helper function to generate unique scene position around a plot point
+const generateScenePosition = (plotPoint: any, existingScenes: any[], sceneIndex: number): { x: number; y: number } => {
+  const radius = 120;
+  const totalScenes = existingScenes.length + 1; // Include the new scene
+  const angle = (sceneIndex * 2 * Math.PI) / Math.max(totalScenes, 1);
+  
+  return {
+    x: plotPoint.position.x + radius * Math.cos(angle),
+    y: plotPoint.position.y + radius * Math.sin(angle)
+  };
+};
 
 interface ProjectWorkspaceProps {
   projectId: string;
@@ -16,40 +77,155 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
   const canvasRef = React.useRef<CanvasHandle>(null);
+  const { user, logout } = useAuth();
 
   // Load project on mount or when projectId changes
   useEffect(() => {
     loadProject();
   }, [projectId]);
 
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showUserMenu) {
+        setShowUserMenu(false);
+      }
+    };
+
+    if (showUserMenu) {
+      document.addEventListener('click', handleClickOutside);
+    }
+
+    return () => {
+      document.removeEventListener('click', handleClickOutside);
+    };
+  }, [showUserMenu]);
+
+  // Convert backend project format to frontend format
+  const convertBackendProject = async (backendProject: BackendProject): Promise<Project> => {
+    try {
+      // Load related data
+      const [acts, characters] = await Promise.all([
+        ProjectApiService.getActs(backendProject.id),
+        ProjectApiService.getCharacters(backendProject.id)
+      ]);
+
+      // Load plot points for each act and their scenes
+      const allPlotPoints = [];
+      for (const act of acts) {
+        try {
+          const plotPoints = await ProjectApiService.getPlotPoints(backendProject.id, act.id);
+          
+          // Ensure plotPoints is an array
+          const plotPointsArray = Array.isArray(plotPoints) ? plotPoints : [];
+          
+          // Load scenes for each plot point
+          for (const plotPoint of plotPointsArray) {
+            try {
+              const scenes = await ProjectApiService.getScenes(backendProject.id, plotPoint.id);
+              
+              const frontendScenes = scenes.map((scene, index) => ({
+                id: scene.id,
+                title: scene.title,
+                synopsis: scene.synopsis || scene.content || '',
+                characterIds: [], // TODO: Load scene-character relationships
+                setting: {
+                  id: scene.settingId || 'default-setting',
+                  name: 'Default Setting',
+                  description: ''
+                },
+                items: [], // TODO: Load scene-item relationships
+                position: scene.position || generateScenePosition(plotPoint, frontendScenes, index) // Generate position around plot point
+              }));
+
+              allPlotPoints.push({
+                id: plotPoint.id,
+                title: plotPoint.title,
+                position: plotPoint.position || { x: 0, y: 0 }, // Use actual position from backend
+                color: plotPoint.color || '#3b82f6', // Use actual color from backend
+                actId: plotPoint.actId,
+                scenes: frontendScenes
+              });
+            } catch (sceneError) {
+              console.warn('Failed to load scenes for plot point:', plotPoint.id, sceneError);
+              // Add plot point without scenes if scene loading fails
+              allPlotPoints.push({
+                id: plotPoint.id,
+                title: plotPoint.title,
+                position: plotPoint.position || { x: 0, y: 0 },
+                color: plotPoint.color || '#3b82f6',
+                actId: plotPoint.actId,
+                scenes: []
+              });
+            }
+          }
+        } catch (plotPointError) {
+          console.error('Failed to load plot points for act:', act.id, plotPointError);
+          console.error('Error details:', plotPointError);
+        }
+      }
+
+      return {
+        id: backendProject.id,
+        title: backendProject.title,
+        description: backendProject.description,
+        tags: backendProject.tags || [],
+        status: backendProject.status,
+        createdDate: new Date(backendProject.createdAt),
+        lastModified: new Date(backendProject.updatedAt),
+        lastAccessed: new Date(), // Set current time as last accessed
+        acts: acts.map(act => ({
+          id: act.id,
+          name: act.name,
+          description: act.description,
+          order: act.order
+        })),
+        currentActId: backendProject.currentActId || acts[0]?.id || '',
+        characters: characters.map(char => ({
+          id: char.id,
+          name: char.name,
+          appearance: char.description, // Map description to appearance
+          emotions: char.characterType, // Map character type to emotions for now
+          motivation: char.description, // Map description to motivation for now
+        })),
+        plotPoints: allPlotPoints,
+        currentZoomLevel: (backendProject.currentZoomLevel as ZoomLevel) || ZoomLevel.STORY_OVERVIEW,
+        focusedElementId: backendProject.focusedElementId
+      };
+    } catch (error) {
+      console.error('Error converting backend project:', error);
+      // Return minimal project structure on error
+      return {
+        id: backendProject.id,
+        title: backendProject.title,
+        description: backendProject.description,
+        tags: [],
+        status: backendProject.status,
+        createdDate: new Date(backendProject.createdAt),
+        lastModified: new Date(backendProject.updatedAt),
+        lastAccessed: new Date(),
+        acts: [{ id: 'fallback-act-1', name: 'Act 1', description: 'Beginning', order: 1 }],
+        currentActId: 'fallback-act-1',
+        characters: [],
+        plotPoints: [],
+        currentZoomLevel: ZoomLevel.STORY_OVERVIEW,
+        focusedElementId: undefined
+      };
+    }
+  };
+
   const loadProject = async () => {
     setIsLoading(true);
     setError(null);
     
     try {
-      let loadedProject = ProjectService.getProject(projectId);
+      const backendProject = await ProjectApiService.getProject(projectId);
       
-      // If project not found, try to migrate old single-project data
-      if (!loadedProject) {
-        const oldProjectData = localStorage.getItem('campfire-project');
-        if (oldProjectData && projectId === 'legacy-project') {
-          try {
-            const oldProject = JSON.parse(oldProjectData);
-            const migratedProject = migrateOldProjectData(oldProject);
-            ProjectService.saveProject(migratedProject);
-            loadedProject = migratedProject;
-            
-            // Remove old data
-            localStorage.removeItem('campfire-project');
-          } catch (migrationError) {
-            console.error('Error migrating old project:', migrationError);
-          }
-        }
-      }
-      
-      if (loadedProject) {
-        setProject(loadedProject);
+      if (backendProject) {
+        const frontendProject = await convertBackendProject(backendProject);
+        setProject(frontendProject);
       } else {
         setError('Project not found');
       }
@@ -70,21 +246,21 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     let acts = oldProject.acts;
     if (!acts || !Array.isArray(acts)) {
       acts = [
-        { id: 'act-1', name: 'Act 1: Setup', description: 'Introduce characters and establish the world', order: 1 },
-        { id: 'act-2', name: 'Act 2: Confrontation', description: 'Rising action and complications', order: 2 },
-        { id: 'act-3', name: 'Act 3: Resolution', description: 'Climax and resolution', order: 3 }
+        { id: 'fallback-act-1', name: 'Act 1: Setup', description: 'Introduce characters and establish the world', order: 1 },
+        { id: 'fallback-act-2', name: 'Act 2: Confrontation', description: 'Rising action and complications', order: 2 },
+        { id: 'fallback-act-3', name: 'Act 3: Resolution', description: 'Climax and resolution', order: 3 }
       ];
     }
 
     // Migrate plot points to ensure they have actId
     const migratedPlotPoints = (oldProject.plotPoints || []).map((pp: any) => {
-      let actId = pp.actId || 'act-1'; // Default to act 1
+      let actId = pp.actId || acts[0]?.id || ''; // Default to first act
       
       // Try to map old act numbers to new act IDs if no actId exists
       if (!pp.actId && pp.act) {
-        if (pp.act === 1 || pp.act === '1') actId = 'act-1';
-        else if (pp.act === 2 || pp.act === '2') actId = 'act-2';
-        else if (pp.act === 3 || pp.act === '3') actId = 'act-3';
+        if (pp.act === 1 || pp.act === '1') actId = acts[0]?.id || '';
+        else if (pp.act === 2 || pp.act === '2') actId = acts[1]?.id || '';
+        else if (pp.act === 3 || pp.act === '3') actId = acts[2]?.id || '';
       }
       
       // Migrate scene characters from objects to IDs if needed
@@ -120,10 +296,84 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     };
   };
 
-  const handleProjectUpdate = (updatedProject: Project) => {
+  const handleProjectUpdate = async (updatedProject: Project, immediate = false) => {
     setProject(updatedProject);
-    ProjectService.saveProject(updatedProject);
+    
+    // For immediate updates (like zoom changes), only sync metadata
+    if (immediate) {
+      debouncedBackendSync(updatedProject, true);
+    } else {
+      // For content changes, sync everything with debouncing
+      if (syncTimeoutId) {
+        clearTimeout(syncTimeoutId);
+      }
+      
+      const timeoutId = setTimeout(() => {
+        syncProjectContent(updatedProject);
+      }, 2000); // 2 second debounce for content changes
+      
+      setSyncTimeoutId(timeoutId);
+    }
   };
+
+  // Debounced backend sync for frequent updates (zoom, pan, etc.)
+  const [syncTimeoutId, setSyncTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const debouncedBackendSync = (updatedProject: Project, immediate = false) => {
+    if (syncTimeoutId) {
+      clearTimeout(syncTimeoutId);
+    }
+
+    const syncFn = async () => {
+      if (!updatedProject.id) return;
+      
+      setIsSyncing(true);
+      try {
+        const updateData = {
+          title: updatedProject.title,
+          description: updatedProject.description,
+          tags: updatedProject.tags,
+          status: updatedProject.status?.toUpperCase() as 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'ARCHIVED',
+          currentActId: updatedProject.currentActId,
+          currentZoomLevel: updatedProject.currentZoomLevel?.toUpperCase() as 'STORY_OVERVIEW' | 'PLOT_POINT_FOCUS' | 'SCENE_DETAIL' | 'CHARACTER_FOCUS',
+          focusedElementId: updatedProject.focusedElementId,
+          goals: updatedProject.goals ? {
+            targetWordCount: updatedProject.goals.targetWordCount,
+            targetActCount: updatedProject.goals.targetActCount,
+            targetPlotPointCount: updatedProject.goals.targetPlotPointCount,
+            deadline: updatedProject.goals.deadline?.toISOString(),
+            completionPercentage: 0
+          } : undefined
+        };
+
+        await ProjectApiService.updateProject(updatedProject.id, updateData);
+        console.log('Project synced to backend successfully');
+      } catch (error) {
+        console.error('Failed to sync project to backend:', error);
+        // TODO: Add toast notification for sync failures
+        // TODO: Implement retry mechanism or offline queue
+      } finally {
+        setIsSyncing(false);
+      }
+    };
+
+    if (immediate) {
+      syncFn();
+    } else {
+      const timeoutId = setTimeout(syncFn, 1000); // Debounce for 1 second
+      setSyncTimeoutId(timeoutId);
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (syncTimeoutId) {
+        clearTimeout(syncTimeoutId);
+      }
+    };
+  }, [syncTimeoutId]);
 
   const handleZoomChange = (zoomLevel: ZoomLevel) => {
     if (!project) return;
@@ -132,7 +382,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       ...project,
       currentZoomLevel: zoomLevel
     };
-    handleProjectUpdate(updatedProject);
+    handleProjectUpdate(updatedProject, true); // Immediate sync for zoom changes
   };
 
   const handleActChange = (actId: string) => {
@@ -142,6 +392,317 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const handleZoomToFit = () => {
     if (canvasRef.current) {
       canvasRef.current.handleZoomToFit();
+    }
+  };
+
+  // Content sync functionality - handles syncing of acts, plot points, scenes, and characters
+  const syncProjectContent = async (updatedProject: Project) => {
+    if (!updatedProject.id) return;
+
+    try {
+      setIsSyncing(true);
+      
+      console.log('Syncing project content. Current project state:', {
+        projectId: updatedProject.id,
+        currentActId: updatedProject.currentActId,
+        acts: updatedProject.acts.map(act => ({ id: act.id, name: act.name })),
+        plotPointsCount: updatedProject.plotPoints.length
+      });
+
+      // First sync basic project metadata
+      await debouncedBackendSync(updatedProject, true);
+
+      // Then sync content in order: Acts -> Characters -> Plot Points -> Scenes
+      await syncActs(updatedProject);
+      await syncCharacters(updatedProject);
+      await syncPlotPointsAndScenes(updatedProject);
+
+      console.log('All project content synced successfully');
+    } catch (error) {
+      console.error('Failed to sync project content:', error);
+      // TODO: Add user notification for sync failures
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Sync acts with backend
+  const syncActs = async (project: Project) => {
+    try {
+      console.log('Syncing acts. Frontend acts:', project.acts.map(a => ({ id: a.id, name: a.name })));
+      
+      // Get current acts from backend
+      const backendActs = await ProjectApiService.getActs(project.id);
+      console.log('Backend acts:', backendActs.map(a => ({ id: a.id, name: a.name })));
+      
+      const frontendActs = project.acts;
+
+      // Find acts to create, update, and delete
+      const actsToCreate = frontendActs.filter(act => 
+        !backendActs.find(backendAct => backendAct.id === act.id)
+      );
+      
+      const actsToUpdate = frontendActs.filter(act => 
+        backendActs.find(backendAct => backendAct.id === act.id)
+      );
+
+      const actsToDelete = backendActs.filter(backendAct => 
+        !frontendActs.find(act => act.id === backendAct.id)
+      );
+
+      console.log('Acts to create:', actsToCreate.map(a => ({ id: a.id, name: a.name })));
+
+      // Create new acts and update the project with the actual backend IDs
+      const actIdMapping: { [oldId: string]: string } = {};
+      for (const act of actsToCreate) {
+        const createdAct = await ProjectApiService.createAct(project.id, {
+          name: act.name,
+          description: act.description,
+          order: act.order
+        });
+        actIdMapping[act.id] = createdAct.id;
+        console.log(`Created act: ${act.name}, old ID: ${act.id}, new ID: ${createdAct.id}`);
+      }
+
+      // Update existing acts
+      for (const act of actsToUpdate) {
+        await ProjectApiService.updateAct(project.id, act.id, {
+          name: act.name,
+          description: act.description,
+          order: act.order
+        });
+      }
+
+      // Delete removed acts
+      for (const act of actsToDelete) {
+        await ProjectApiService.deleteAct(project.id, act.id);
+      }
+
+      // If we created new acts, update the project structure with the new IDs
+      if (Object.keys(actIdMapping).length > 0) {
+        console.log('Updating project with new act IDs:', actIdMapping);
+        
+        // Update act IDs
+        const updatedActs = project.acts.map(act => ({
+          ...act,
+          id: actIdMapping[act.id] || act.id
+        }));
+
+        // Update currentActId if it was mapped
+        const updatedCurrentActId = actIdMapping[project.currentActId] || project.currentActId;
+
+        // Update plot point actIds
+        const updatedPlotPoints = project.plotPoints.map(pp => ({
+          ...pp,
+          actId: actIdMapping[pp.actId] || pp.actId
+        }));
+
+        // Update the project with new IDs
+        const updatedProject = {
+          ...project,
+          acts: updatedActs,
+          currentActId: updatedCurrentActId,
+          plotPoints: updatedPlotPoints
+        };
+
+        // Update the project state
+        setProject(updatedProject);
+        console.log('Updated project with new act IDs');
+      }
+    } catch (error) {
+      console.error('Failed to sync acts:', error);
+      throw error;
+    }
+  };
+
+  // Sync characters with backend
+  const syncCharacters = async (project: Project) => {
+    try {
+      // Get current characters from backend
+      const backendCharacters = await ProjectApiService.getCharacters(project.id);
+      const frontendCharacters = project.characters;
+
+      // Find characters to create, update, and delete
+      const charactersToCreate = frontendCharacters.filter(char => 
+        !backendCharacters.find(backendChar => backendChar.id === char.id)
+      );
+      
+      const charactersToUpdate = frontendCharacters.filter(char => 
+        backendCharacters.find(backendChar => backendChar.id === char.id)
+      );
+
+      const charactersToDelete = backendCharacters.filter(backendChar => 
+        !frontendCharacters.find(char => char.id === backendChar.id)
+      );
+
+      // Create new characters
+      for (const character of charactersToCreate) {
+        await ProjectApiService.createCharacter(project.id, {
+          name: character.name,
+          description: character.appearance, // Map appearance to description
+          characterType: 'other' // Default type, could be enhanced
+        });
+      }
+
+      // Update existing characters
+      for (const character of charactersToUpdate) {
+        await ProjectApiService.updateCharacter(project.id, character.id, {
+          name: character.name,
+          description: character.appearance,
+          characterType: 'other'
+        });
+      }
+
+      // Delete removed characters
+      for (const character of charactersToDelete) {
+        await ProjectApiService.deleteCharacter(project.id, character.id);
+      }
+    } catch (error) {
+      console.error('Failed to sync characters:', error);
+      throw error;
+    }
+  };
+
+  // Sync plot points and their scenes with backend
+  const syncPlotPointsAndScenes = async (project: Project) => {
+    try {
+      const frontendPlotPoints = project.plotPoints;
+
+      for (const plotPoint of frontendPlotPoints) {
+        let plotPointId = plotPoint.id;
+        
+        // Check if this is a temporary ID that needs to be created
+        const isTemporary = plotPoint.id.startsWith('temp-') || plotPoint.id.startsWith('plot-');
+        
+        if (isTemporary) {
+          try {
+            console.log(`Creating plot point: ${plotPoint.title} with actId: ${plotPoint.actId}`);
+            // Try to create the plot point
+            const createdPlotPoint = await ProjectApiService.createPlotPoint(project.id, plotPoint.actId, {
+              actId: plotPoint.actId,
+              title: plotPoint.title,
+              position: plotPoint.position || generateUniquePosition(project.plotPoints),
+              color: plotPoint.color
+            });
+            
+            if (createdPlotPoint && createdPlotPoint.id) {
+              plotPointId = createdPlotPoint.id;
+              console.log(`Created plot point: ${plotPoint.title} with ID: ${plotPointId}`);
+            } else {
+              console.error('Created plot point response missing id:', createdPlotPoint);
+              continue;
+            }
+          } catch (error) {
+            console.error('Failed to create plot point:', plotPoint.title, error);
+            continue; // Skip this plot point if creation fails
+          }
+        } else {
+          // Try to update existing plot point
+          try {
+            await ProjectApiService.updatePlotPoint(project.id, plotPoint.actId, plotPoint.id, {
+              title: plotPoint.title,
+              position: plotPoint.position ? {
+                x: plotPoint.position.x,
+                y: plotPoint.position.y
+              } : undefined,
+              color: plotPoint.color
+            });
+            console.log(`Updated plot point: ${plotPoint.title}`);
+          } catch (error) {
+            // If update fails, try to create it
+            try {
+              const createdPlotPoint = await ProjectApiService.createPlotPoint(project.id, plotPoint.actId, {
+                actId: plotPoint.actId,
+                title: plotPoint.title,
+                position: {
+                  x: plotPoint.position?.x || 100,
+                  y: plotPoint.position?.y || 100
+                },
+                color: plotPoint.color
+              });
+              plotPointId = createdPlotPoint.id;
+              console.log(`Created plot point (after update failed): ${plotPoint.title} with ID: ${plotPointId}`);
+            } catch (createError) {
+              console.error('Failed to create plot point after update failed:', plotPoint.title, createError);
+              continue;
+            }
+          }
+        }
+
+        // Sync scenes for this plot point
+        await syncScenesForPlotPoint(project.id, plotPointId, plotPoint);
+      }
+    } catch (error) {
+      console.error('Failed to sync plot points and scenes:', error);
+      throw error;
+    }
+  };
+
+  // Sync scenes for a specific plot point
+  const syncScenesForPlotPoint = async (projectId: string, plotPointId: string, plotPoint: any) => {
+    try {
+      const frontendScenes = plotPoint.scenes || [];
+
+      for (const scene of frontendScenes) {
+        // Check if this is a temporary ID that needs to be created
+        const isTemporary = scene.id.startsWith('temp-') || scene.id.startsWith('scene-');
+        
+        if (isTemporary) {
+          try {
+            // Try to create the scene
+            const plotPoint = project?.plotPoints.find(pp => pp.id === plotPointId);
+            const scenePosition = scene.position || (plotPoint ? 
+              generateScenePosition(plotPoint, plotPoint.scenes, plotPoint.scenes.length) : 
+              { x: 0, y: 0 }
+            );
+            
+            const createdScene = await ProjectApiService.createScene(projectId, plotPointId, {
+              plotPointId: plotPointId,
+              title: scene.title,
+              synopsis: scene.synopsis,
+              content: scene.synopsis,
+              position: scenePosition
+            });
+            console.log(`Created scene: ${scene.title} with ID: ${createdScene.id}`);
+          } catch (error) {
+            console.error('Failed to create scene:', scene.title, error);
+          }
+        } else {
+          // Try to update existing scene
+          try {
+            await ProjectApiService.updateScene(projectId, plotPointId, scene.id, {
+              title: scene.title,
+              synopsis: scene.synopsis,
+              content: scene.synopsis,
+              position: scene.position
+            });
+            console.log(`Updated scene: ${scene.title}`);
+          } catch (error) {
+            // If update fails, try to create it
+            try {
+              const plotPoint = project?.plotPoints.find(pp => pp.id === plotPointId);
+              const scenePosition = scene.position || (plotPoint ? 
+                generateScenePosition(plotPoint, plotPoint.scenes, plotPoint.scenes.length) : 
+                { x: 0, y: 0 }
+              );
+              
+              const createdScene = await ProjectApiService.createScene(projectId, plotPointId, {
+                plotPointId: plotPointId,
+                title: scene.title,
+                synopsis: scene.synopsis,
+                content: scene.synopsis,
+                position: scenePosition
+              });
+              console.log(`Created scene (after update failed): ${scene.title} with ID: ${createdScene.id}`);
+            } catch (createError) {
+              console.error('Failed to create scene after update failed:', scene.title, createError);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to sync scenes for plot point:', plotPointId, error);
+      throw error;
     }
   };
 
@@ -206,6 +767,39 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
           <span>{project.plotPoints.length} plot points</span>
           <span>{project.characters.length} characters</span>
         </div>
+        
+        {/* User Menu */}
+        <div className="relative">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowUserMenu(!showUserMenu);
+            }}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+          >
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+              {user?.username?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || 'U'}
+            </div>
+          </button>
+          
+          {showUserMenu && (
+            <div className="absolute right-0 top-10 bg-white border border-gray-200 rounded-lg shadow-lg py-1 z-20 min-w-48">
+              <div className="px-4 py-2 border-b border-gray-200">
+                <p className="text-sm font-medium text-gray-900">{user?.username}</p>
+                <p className="text-sm text-gray-500">{user?.email}</p>
+              </div>
+              <button
+                onClick={() => {
+                  logout();
+                  setShowUserMenu(false);
+                }}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Act Navigation Bar */}
@@ -216,12 +810,25 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       />
 
       {/* App Header with Toolbar */}
-      <Toolbar 
-        project={project}
-        onProjectUpdate={handleProjectUpdate}
-        onZoomChange={handleZoomChange}
-        onZoomToFit={handleZoomToFit}
-      />
+      <div className="relative">
+        <Toolbar 
+          project={project}
+          onProjectUpdate={handleProjectUpdate}
+          onZoomChange={handleZoomChange}
+          onZoomToFit={handleZoomToFit}
+        />
+        
+        {/* Sync Status Indicator */}
+        {isSyncing && (
+          <div className="absolute top-2 right-16 flex items-center space-x-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-sm border border-blue-200">
+            <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span>Saving...</span>
+          </div>
+        )}
+      </div>
       
       {/* Main Canvas Area */}
       <div className="flex-1 overflow-hidden">

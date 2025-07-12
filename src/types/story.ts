@@ -40,10 +40,10 @@ export interface Item {
 
 // Zoom levels as defined in PRD Section 4.5
 export enum ZoomLevel {
-  STORY_OVERVIEW = 'story_overview',    // All plot points visible, scenes collapsed
-  PLOT_POINT_FOCUS = 'plot_point_focus', // One plot point centered, scenes visible
-  SCENE_DETAIL = 'scene_detail',        // Individual scene expanded with full detail hierarchy
-  CHARACTER_FOCUS = 'character_focus'   // Character-specific information across multiple scenes
+  STORY_OVERVIEW = 'STORY_OVERVIEW',    // All plot points visible, scenes collapsed
+  PLOT_POINT_FOCUS = 'PLOT_POINT_FOCUS', // One plot point centered, scenes visible
+  SCENE_DETAIL = 'SCENE_DETAIL',        // Individual scene expanded with full detail hierarchy
+  CHARACTER_FOCUS = 'CHARACTER_FOCUS'   // Character-specific information across multiple scenes
 }
 
 // Act structure for act-based canvas system

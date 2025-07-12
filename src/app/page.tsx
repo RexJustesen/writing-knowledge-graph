@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import ProjectHomepage from '../components/ProjectHomepage';
 import ProjectWorkspace from '../components/ProjectWorkspace';
+import ProtectedRoute from '../components/ProtectedRoute';
 
 // Main app router component
 export default function WritingPlannerApp() {
@@ -35,19 +36,27 @@ export default function WritingPlannerApp() {
   }, [currentView]);
 
   // Render the appropriate view
-  if (currentView === 'homepage') {
+  const renderContent = () => {
+    if (currentView === 'homepage') {
+      return <ProjectHomepage onProjectSelect={handleProjectSelect} />;
+    }
+
+    if (currentView === 'project' && currentProjectId) {
+      return (
+        <ProjectWorkspace 
+          projectId={currentProjectId}
+          onBackToHomepage={handleBackToHomepage}
+        />
+      );
+    }
+
+    // Fallback to homepage
     return <ProjectHomepage onProjectSelect={handleProjectSelect} />;
-  }
+  };
 
-  if (currentView === 'project' && currentProjectId) {
-    return (
-      <ProjectWorkspace 
-        projectId={currentProjectId}
-        onBackToHomepage={handleBackToHomepage}
-      />
-    );
-  }
-
-  // Fallback to homepage
-  return <ProjectHomepage onProjectSelect={handleProjectSelect} />;
+  return (
+    <ProtectedRoute>
+      {renderContent()}
+    </ProtectedRoute>
+  );
 }

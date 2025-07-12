@@ -1,0 +1,410 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================
+// 1. Users & Authentication
+// ================================
+
+model User {
+  id              String    @id @default(cuid())
+  email           String    @unique
+  username        String?   @unique
+  passwordHash    String
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  lastLoginAt     DateTime?
+  isActive        Boolean   @default(true)
+  subscriptionTier SubscriptionTier @default(FREE)
+  
+  // JSON field for user preferences
+  preferences     Json?
+  
+  // Relations
+  projects        Project[]
+  sessions        UserSession[]
+  activities      ActivityLog[]
+  collaborations  ProjectCollaborator[]
+  templates       ProjectTemplate[]
+  
+  @@index([email])
+  @@index([isActive])
+  @@map("users")
+}
+
+model UserSession {
+  id           String   @id @default(cuid())
+  userId       String
+  token        String   @unique
+  refreshToken String?  @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  ipAddress    String?
+  userAgent    String?
+  
+  // Relations
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([token])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+// ================================
+// 2. Projects & Organization
+// ================================
+
+model Project {
+  id                String        @id @default(cuid())
+  userId            String
+  title             String
+  description       String?
+  tags              String[]
+  status            ProjectStatus @default(DRAFT)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  lastAccessedAt    DateTime?
+  template          ProjectTemplate? @relation(fields: [templateId], references: [id])
+  templateId        String?
+  
+  // Project goals and metadata (JSON fields for flexibility)
+  goals             Json?
+  metadata          Json?
+  
+  // Current state
+  currentActId      String?
+  currentZoomLevel  ZoomLevel     @default(STORY_OVERVIEW)
+  focusedElementId  String?
+  
+  // Collaboration
+  isPublic          Boolean       @default(false)
+  
+  // Relations
+  user              User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  acts              Act[]
+  plotPoints        PlotPoint[]
+  scenes            Scene[]
+  characters        Character[]
+  settings          Setting[]
+  items             Item[]
+  collaborators     ProjectCollaborator[]
+  activities        ActivityLog[]
+  
+  @@index([userId])
+  @@index([status])
+  @@index([updatedAt])
+  @@index([tags])
+  @@map("projects")
+}
+
+model ProjectCollaborator {
+  id        String             @id @default(cuid())
+  userId    String
+  projectId String
+  role      CollaboratorRole   @default(VIEWER)
+  addedAt   DateTime           @default(now())
+  addedBy   String
+  
+  // Relations
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project   Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, projectId])
+  @@index([projectId])
+  @@map("project_collaborators")
+}
+
+// ================================
+// 3. Story Structure Entities
+// ================================
+
+model Act {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  order       Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  
+  // Canvas state (JSON field for flexibility)
+  canvasState Json?
+  
+  // Relations
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  plotPoints  PlotPoint[]
+  
+  @@index([projectId, order])
+  @@map("acts")
+}
+
+model PlotPoint {
+  id          String   @id @default(cuid())
+  projectId   String
+  actId       String
+  title       String
+  synopsis    String?
+  position    Json     // { x: number, y: number }
+  color       String   @default("#3b82f6")
+  order       Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  act         Act      @relation(fields: [actId], references: [id], onDelete: Cascade)
+  scenes      Scene[]
+  
+  @@index([projectId])
+  @@index([actId])
+  @@index([projectId, actId])
+  @@map("plot_points")
+}
+
+model Scene {
+  id            String    @id @default(cuid())
+  projectId     String
+  plotPointId   String
+  title         String
+  synopsis      String?
+  content       String?
+  wordCount     Int       @default(0)
+  position      Json?     // Optional override position
+  order         Int?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Foreign key relationships
+  settingId     String?
+  
+  // Relations
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  plotPoint     PlotPoint        @relation(fields: [plotPointId], references: [id], onDelete: Cascade)
+  setting       Setting?         @relation(fields: [settingId], references: [id])
+  characters    SceneCharacter[]
+  items         SceneItem[]
+  
+  @@index([projectId])
+  @@index([plotPointId])
+  @@map("scenes")
+}
+
+// ================================
+// 4. Story Elements
+// ================================
+
+model Character {
+  id            String           @id @default(cuid())
+  projectId     String
+  name          String
+  description   String?
+  appearance    String?
+  personality   String?
+  motivation    String?
+  backstory     String?
+  characterType CharacterType    @default(MINOR)
+  arcNotes      String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  
+  // Relations
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes        SceneCharacter[]
+  
+  @@index([projectId])
+  @@index([characterType])
+  @@map("characters")
+}
+
+model Setting {
+  id          String   @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  location    String?
+  timeOfDay   String?
+  weather     String?
+  mood        String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  // Relations
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes      Scene[]
+  
+  @@index([projectId])
+  @@map("settings")
+}
+
+model Item {
+  id           String      @id @default(cuid())
+  projectId    String
+  name         String
+  description  String?
+  significance String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  
+  // Relations
+  project      Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scenes       SceneItem[]
+  
+  @@index([projectId])
+  @@map("items")
+}
+
+// ================================
+// 5. Junction Tables (Many-to-Many)
+// ================================
+
+model SceneCharacter {
+  id             String    @id @default(cuid())
+  sceneId        String
+  characterId    String
+  role           String?   // Role in this specific scene
+  emotionalState String?   // Character's state in this scene
+  createdAt      DateTime  @default(now())
+  
+  // Relations
+  scene          Scene     @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  character      Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+  
+  @@unique([sceneId, characterId])
+  @@index([sceneId])
+  @@index([characterId])
+  @@map("scene_characters")
+}
+
+model SceneItem {
+  id        String   @id @default(cuid())
+  sceneId   String
+  itemId    String
+  usage     String?  // How the item is used in this scene
+  createdAt DateTime @default(now())
+  
+  // Relations
+  scene     Scene    @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  
+  @@unique([sceneId, itemId])
+  @@index([sceneId])
+  @@index([itemId])
+  @@map("scene_items")
+}
+
+// ================================
+// 6. System & Audit Tables
+// ================================
+
+model ActivityLog {
+  id         String       @id @default(cuid())
+  userId     String
+  projectId  String?
+  entityType EntityType
+  entityId   String
+  action     ActionType
+  changes    Json?        // JSON object with field changes
+  timestamp  DateTime     @default(now())
+  ipAddress  String?
+  
+  // Relations
+  user       User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project    Project?     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([projectId])
+  @@index([timestamp])
+  @@index([entityType, entityId])
+  @@map("activity_logs")
+}
+
+model ProjectTemplate {
+  id          String        @id @default(cuid())
+  name        String
+  description String
+  type        TemplateType
+  isSystem    Boolean       @default(false)
+  defaultActs Json          // Array of act templates
+  createdBy   String?
+  createdAt   DateTime      @default(now())
+  
+  // Relations
+  creator     User?         @relation(fields: [createdBy], references: [id])
+  projects    Project[]
+  
+  @@index([type])
+  @@index([isSystem])
+  @@map("project_templates")
+}
+
+// ================================
+// Enums
+// ================================
+
+enum SubscriptionTier {
+  FREE
+  PREMIUM
+  PROFESSIONAL
+}
+
+enum ProjectStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum ZoomLevel {
+  STORY_OVERVIEW
+  PLOT_POINT_FOCUS
+  SCENE_DETAIL
+  CHARACTER_FOCUS
+}
+
+enum CollaboratorRole {
+  VIEWER
+  EDITOR
+  OWNER
+}
+
+enum CharacterType {
+  PROTAGONIST
+  ANTAGONIST
+  SUPPORTING
+  MINOR
+}
+
+enum EntityType {
+  PROJECT
+  ACT
+  PLOT_POINT
+  SCENE
+  CHARACTER
+  SETTING
+  ITEM
+}
+
+enum ActionType {
+  CREATE
+  UPDATE
+  DELETE
+  MOVE
+  DUPLICATE
+}
+
+enum TemplateType {
+  NOVEL
+  SCREENPLAY
+  SHORT_STORY
+  FROM_SCRATCH
+  CUSTOM
+}

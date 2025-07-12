@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { PlotPoint, Scene, Character, Setting, Item, Project } from '@/types/story';
+import { ProjectApiService } from '@/services/projectApiService';
 
 interface PropertyPanelProps {
   selectedNode: any | null;
@@ -175,7 +176,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
         name: 'New Location',
         description: ''
       },
-      items: []
+      items: [],
+      position: { x: 0, y: 0 } // Will be fixed by overlap detection or calculated properly during save
     };
     
     // Check if this is a temporary node
@@ -322,7 +324,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     onClose();
   };
 
-  const handleConfirmPlotPointDelete = () => {
+  const handleConfirmPlotPointDelete = async () => {
     const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
                    actualNode?.data?.id || nodeData?.id;
     
@@ -335,15 +337,27 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
         onNodeDelete(nodeId, nodeType);
       }
     } else {
-      // Remove plot point and all its scenes from project
-      const updatedProject = { ...project };
-      updatedProject.plotPoints = updatedProject.plotPoints.filter(pp => pp.id !== nodeId);
-      updatedProject.lastModified = new Date();
-      onProjectUpdate(updatedProject);
-      
-      // Notify the canvas to remove the node and its children
-      if (onNodeDelete) {
-        onNodeDelete(nodeId, nodeType);
+      try {
+        // Find the plot point to get its actId
+        const plotPointToDelete = project.plotPoints.find(pp => pp.id === nodeId);
+        if (plotPointToDelete) {
+          // Call backend API to delete the plot point
+          await ProjectApiService.deletePlotPoint(project.id, plotPointToDelete.actId, nodeId);
+        }
+        
+        // Remove plot point and all its scenes from project
+        const updatedProject = { ...project };
+        updatedProject.plotPoints = updatedProject.plotPoints.filter(pp => pp.id !== nodeId);
+        updatedProject.lastModified = new Date();
+        onProjectUpdate(updatedProject);
+        
+        // Notify the canvas to remove the node and its children
+        if (onNodeDelete) {
+          onNodeDelete(nodeId, nodeType);
+        }
+      } catch (error) {
+        console.error('Failed to delete plot point:', error);
+        // TODO: Show error message to user
       }
     }
     

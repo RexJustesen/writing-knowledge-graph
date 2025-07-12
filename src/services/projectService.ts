@@ -227,9 +227,9 @@ export class ProjectService {
           createdDate: new Date(oldProject.lastModified || Date.now()),
           lastModified: new Date(oldProject.lastModified || Date.now()),
           acts: oldProject.acts || [
-            { id: 'act-1', name: 'Act 1', description: 'Beginning of the story', order: 1 }
+            { id: 'migration-act-1', name: 'Act 1', description: 'Beginning of the story', order: 1 }
           ],
-          currentActId: oldProject.currentActId || 'act-1',
+          currentActId: oldProject.currentActId || 'migration-act-1',
           characters: oldProject.characters || [],
           plotPoints: oldProject.plotPoints || [],
           currentZoomLevel: oldProject.currentZoomLevel || ZoomLevel.STORY_OVERVIEW,
