@@ -33,6 +33,7 @@ export class ApiClient {
     const token = typeof window !== 'undefined' ? localStorage.getItem('access_token') : null;
     return {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning page
       ...(token && { Authorization: `Bearer ${token}` })
     };
   }
@@ -130,6 +131,7 @@ export class ApiClient {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // Skip ngrok browser warning page
         },
         body: JSON.stringify({ refreshToken }),
       });
