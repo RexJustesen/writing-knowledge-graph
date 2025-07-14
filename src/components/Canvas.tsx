@@ -492,14 +492,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
           // Immediately select the temp node for editing - get the first element from collection
           const tempCyNode = tempCyNodes[0];
           tempCyNode.select(); // Add selection (yellow ring)
-          // Center the new node with smooth animation
-          cytoscapeInstance.animate({
-            center: { eles: tempCyNode },
-            zoom: cytoscapeInstance.zoom()
-          }, {
-            duration: 300,
-            easing: 'ease-out'
-          });
+          // No centering animation - just select the node
           setSelectedNode(tempCyNode);
         }
       }
