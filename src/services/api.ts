@@ -155,10 +155,14 @@ export class ApiClient {
     endpoint: string,
     data?: any
   ): Promise<T> {
+    console.log(`🌐 authenticatedRequest: ${method} ${endpoint}`, data ? { data } : '');
+    
     // Check if token is expired and try to refresh
     if (this.isTokenExpired()) {
+      console.log('🔑 Token expired, trying to refresh...');
       const refreshed = await this.refreshToken();
       if (!refreshed) {
+        console.log('❌ Token refresh failed, redirecting to login');
         // Redirect to login or throw auth error
         if (typeof window !== 'undefined') {
           localStorage.removeItem('access_token');
@@ -167,21 +171,35 @@ export class ApiClient {
         }
         throw new ApiError('Authentication required', 401);
       }
+      console.log('✅ Token refreshed successfully');
     }
 
-    switch (method) {
-      case 'GET':
-        return this.get<T>(endpoint);
-      case 'POST':
-        return this.post<T>(endpoint, data);
-      case 'PUT':
-        return this.put<T>(endpoint, data);
-      case 'PATCH':
-        return this.patch<T>(endpoint, data);
-      case 'DELETE':
-        return this.delete<T>(endpoint);
-      default:
-        throw new Error(`Unsupported method: ${method}`);
+    try {
+      let result: T;
+      switch (method) {
+        case 'GET':
+          result = await this.get<T>(endpoint);
+          break;
+        case 'POST':
+          result = await this.post<T>(endpoint, data);
+          break;
+        case 'PUT':
+          result = await this.put<T>(endpoint, data);
+          break;
+        case 'PATCH':
+          result = await this.patch<T>(endpoint, data);
+          break;
+        case 'DELETE':
+          result = await this.delete<T>(endpoint);
+          break;
+        default:
+          throw new Error(`Unsupported method: ${method}`);
+      }
+      console.log(`✅ authenticatedRequest success: ${method} ${endpoint}`, result);
+      return result;
+    } catch (error) {
+      console.error(`❌ authenticatedRequest error: ${method} ${endpoint}`, error);
+      throw error;
     }
   }
 }

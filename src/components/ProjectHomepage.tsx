@@ -68,12 +68,15 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
   }, [showUserMenu]);
 
   const loadProjects = async () => {
+    console.log('🔍 loadProjects called');
     setIsLoading(true);
     try {
+      console.log('📡 Making API call to getProjects...');
       const allProjects = await ProjectApiService.getProjects();
+      console.log('✅ Projects received:', allProjects);
       setProjects(Array.isArray(allProjects) ? allProjects : []);
     } catch (error) {
-      console.error('Error loading projects:', error);
+      console.error('❌ Error loading projects:', error);
       setProjects([]); // Set empty array on error
     } finally {
       setIsLoading(false);

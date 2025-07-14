@@ -263,8 +263,15 @@ export interface UpdateCollaboratorRequest {
 export class ProjectApiService {
   // Project CRUD
   static async getProjects(): Promise<Project[]> {
-    const response = await ApiClient.authenticatedRequest<{ projects: Project[] }>('GET', '/api/projects');
-    return response.projects || [];
+    console.log('🔧 ProjectApiService.getProjects called');
+    try {
+      const response = await ApiClient.authenticatedRequest<{ projects: Project[] }>('GET', '/api/projects');
+      console.log('🔧 getProjects response:', response);
+      return response.projects || [];
+    } catch (error) {
+      console.error('🔧 getProjects error:', error);
+      throw error;
+    }
   }
 
   static async getProject(projectId: string): Promise<Project> {
