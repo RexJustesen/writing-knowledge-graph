@@ -264,7 +264,7 @@ export class ProjectApiService {
   // Project CRUD
   static async getProjects(): Promise<Project[]> {
     const response = await ApiClient.authenticatedRequest<{ projects: Project[] }>('GET', '/api/projects');
-    return response.projects;
+    return response.projects || [];
   }
 
   static async getProject(projectId: string): Promise<Project> {

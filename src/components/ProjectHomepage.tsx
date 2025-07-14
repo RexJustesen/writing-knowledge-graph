@@ -28,12 +28,20 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
   useEffect(() => {
     loadProjects();
     
-    // Connect to Socket.IO for real-time updates
-    socketService.connect();
+    // Connect to Socket.IO for real-time updates (with error handling)
+    try {
+      socketService.connect();
+    } catch (error) {
+      console.warn('Socket.IO connection failed, continuing without real-time updates:', error);
+    }
     
     // Cleanup on unmount
     return () => {
-      socketService.disconnect();
+      try {
+        socketService.disconnect();
+      } catch (error) {
+        console.warn('Socket.IO disconnect error:', error);
+      }
     };
   }, []);
 
@@ -63,22 +71,23 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
     setIsLoading(true);
     try {
       const allProjects = await ProjectApiService.getProjects();
-      setProjects(allProjects);
+      setProjects(Array.isArray(allProjects) ? allProjects : []);
     } catch (error) {
       console.error('Error loading projects:', error);
+      setProjects([]); // Set empty array on error
     } finally {
       setIsLoading(false);
     }
   };
 
   const filterProjects = () => {
-    let filtered = projects;
+    let filtered = Array.isArray(projects) ? projects : [];
 
     // Apply search filter
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      filtered = projects.filter(project =>
-        project.title.toLowerCase().includes(query) ||
+      filtered = filtered.filter(project =>
+        project.title?.toLowerCase().includes(query) ||
         project.description?.toLowerCase().includes(query)
       );
     }
