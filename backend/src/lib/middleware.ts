@@ -150,11 +150,22 @@ setInterval(() => {
 
 // CORS middleware
 export const corsMiddleware = (req: Request, res: Response, next: NextFunction): void => {
-  const allowedOrigins = process.env.CORS_ORIGINS?.split(',') || ['http://localhost:3000'];
+  const allowedOrigins = process.env.CORS_ORIGINS?.split(',').map(origin => origin.trim()) || ['http://localhost:3000'];
   const origin = req.headers.origin;
+
+  console.log('CORS Debug:', { 
+    requestOrigin: origin, 
+    allowedOrigins, 
+    envVar: process.env.CORS_ORIGINS 
+  });
 
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
+    console.log('CORS: Origin allowed:', origin);
+  } else {
+    console.log('CORS: Origin not allowed:', origin);
+    // For debugging, allow all origins temporarily
+    res.header('Access-Control-Allow-Origin', '*');
   }
 
   res.header('Access-Control-Allow-Credentials', 'true');
