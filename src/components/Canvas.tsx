@@ -171,7 +171,7 @@ const calculateScenePositionSafe = (
 
 interface CanvasProps {
   project: Project;
-  onProjectUpdate: (project: Project) => void;
+  onProjectUpdate: (project: Project, immediate?: boolean) => void;
 }
 
 export interface CanvasHandle {
@@ -185,7 +185,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const [selectedNode, setSelectedNode] = useState<any | null>(null);
   const [tempNode, setTempNode] = useState<any | null>(null); // For newly created nodes
   const [expandedPlotPoint, setExpandedPlotPoint] = useState<string | null>(null); // Track which plot point shows its scenes
-  const [lastSaved, setLastSaved] = useState<Date>(new Date('2024-01-01')); // Use static initial date
   const [isMounted, setIsMounted] = useState(false);
   const [undoStack, setUndoStack] = useState<Project[]>([]); // For undo functionality
   const [undoExpandedStates, setUndoExpandedStates] = useState<(string | null)[]>([]); // Track expanded states for undo
@@ -197,7 +196,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   // Track if component has mounted to prevent hydration errors
   useEffect(() => {
     setIsMounted(true);
-    setLastSaved(new Date()); // Set actual current time once mounted
   }, []);
 
   // Fix overlapping plot points and scenes when project loads
@@ -224,48 +222,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   useEffect(() => {
     setCurrentZoom(project.currentZoomLevel);
   }, [project.currentZoomLevel]);
-
-  // Auto-save functionality - save every 10 seconds
-  useEffect(() => {
-    const autoSaveInterval = setInterval(() => {
-      // Auto-save temporary nodes by converting them to permanent ones
-      if (tempNode) {
-        const newId = `plot-${Date.now()}`;
-        const newPlotPoint: PlotPoint = {
-          ...tempNode,
-          id: newId // Convert temp ID to permanent ID
-        };
-        const updatedProject = {
-          ...project,
-          plotPoints: [...project.plotPoints, newPlotPoint],
-          lastModified: new Date()
-        };
-        
-        // Update expanded state to use the new permanent ID
-        if (expandedPlotPoint === tempNode.id) {
-          setExpandedPlotPoint(newId);
-        }
-        
-        onProjectUpdate(updatedProject);
-        setTempNode(null); // Clear temp node since it's now saved
-        console.log('Auto-saved temporary plot point at', new Date().toLocaleTimeString());
-      }
-      
-      // Save to localStorage
-      try {
-        localStorage.setItem(`writing-graph-project-${project.id}`, JSON.stringify({
-          ...project,
-          lastModified: new Date()
-        }));
-        setLastSaved(new Date());
-        console.log('Auto-saved project at', new Date().toLocaleTimeString());
-      } catch (error) {
-        console.error('Auto-save failed:', error);
-      }
-    }, 10000); // 10 seconds
-
-    return () => clearInterval(autoSaveInterval);
-  }, [project, tempNode, onProjectUpdate]);
 
   // Function to update plot point position in project data
   const updatePlotPointPosition = (plotPointId: string, newPosition: { x: number; y: number }) => {
@@ -1289,7 +1245,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   };
 
   // Handle property panel save - this will be called from PropertyPanel
-  const handleProjectUpdateFromPanel = (updatedProject: Project) => {
+  const handleProjectUpdateFromPanel = (updatedProject: Project, immediate?: boolean) => {
     // If we were editing a temp node, it's now been saved
     if (tempNode) {
       setTempNode(null);
@@ -1313,7 +1269,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       }
     }
     
-    onProjectUpdate(updatedProject);
+    onProjectUpdate(updatedProject, immediate);
   };
 
   // Context menu placeholder (to be implemented)
@@ -1326,15 +1282,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     <div className="w-full h-full relative">
       <div ref={cyRef} className="w-full h-full bg-gray-50" />
       
-      {/* Zoom level indicator */}
-      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-md px-3 py-2">
-        <span className="text-sm font-medium text-gray-900">
-          {currentZoom.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-        </span>
-      </div>
-
       {/* Undo button */}
-      <div className="absolute top-4 left-40 bg-white rounded-lg shadow-md px-3 py-2">
+      <div className="absolute top-4 left-4 bg-white rounded-lg shadow-md px-3 py-2">
         <button
           onClick={handleUndo}
           disabled={undoStack.length === 0}
@@ -1355,11 +1304,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         <div>• Click: Edit node</div>
         <div>• Double-click: Zoom in</div>
         <div>• Empty space: New plot point</div>
-      </div>
-
-      {/* Auto-save status */}
-      <div className="absolute bottom-4 left-4 bg-white rounded-lg shadow-md px-3 py-2 text-xs text-gray-600">
-        Last saved: {isMounted ? lastSaved.toLocaleTimeString() : '--:--:--'}
       </div>
 
       {/* Instructions for new users */}

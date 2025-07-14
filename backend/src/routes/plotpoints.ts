@@ -151,8 +151,8 @@ router.patch('/:projectId/acts/:actId/plotpoints/:plotPointId', async (req: Auth
     const plotPoint = await db.plotPoint.update({
       where: { 
         id: plotPointId,
-        projectId, // Ensure plot point belongs to project
-        actId // Ensure plot point belongs to act
+        projectId // Ensure plot point belongs to project
+        // Removed actId constraint to allow moving between acts
       },
       data: updateData,
       include: {
@@ -199,8 +199,8 @@ router.put('/:projectId/acts/:actId/plotpoints/:plotPointId', async (req: Authen
     const plotPoint = await db.plotPoint.update({
       where: { 
         id: plotPointId,
-        projectId, // Ensure plot point belongs to project
-        actId // Ensure plot point belongs to act
+        projectId // Ensure plot point belongs to project
+        // Removed actId constraint to allow moving between acts
       },
       data: updateData,
       include: {

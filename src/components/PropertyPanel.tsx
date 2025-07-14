@@ -8,7 +8,7 @@ interface PropertyPanelProps {
   selectedNode: any | null;
   project: Project;
   tempNode?: PlotPoint | null; // For temporary nodes that haven't been saved yet
-  onProjectUpdate: (project: Project) => void;
+  onProjectUpdate: (project: Project, immediate?: boolean) => void;
   onClose: () => void;
   onRealTimeUpdate?: (nodeId: string, updates: any) => void; // For real-time updates like color changes
   onTempNodeUpdate?: (tempNode: PlotPoint) => void; // For updating temporary node data
@@ -483,7 +483,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     }
     
     updatedProject.lastModified = new Date();
-    onProjectUpdate(updatedProject);
+    onProjectUpdate(updatedProject, true); // Use immediate=true for PropertyPanel changes
     onClose();
   };
 

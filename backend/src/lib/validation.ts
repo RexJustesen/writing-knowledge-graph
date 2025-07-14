@@ -44,13 +44,13 @@ export const updateProjectSchema = z.object({
 // Act validation schemas
 export const createActSchema = z.object({
   name: z.string().min(1, 'Act name is required').max(100, 'Name too long'),
-  description: z.string().max(500, 'Description too long').optional(),
+  description: z.string().max(500, 'Description too long').nullable().optional(),
   order: z.number().int().positive('Order must be a positive integer'),
 });
 
 export const updateActSchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  description: z.string().max(500).optional(),
+  description: z.string().max(500).nullable().optional(),
   order: z.number().int().positive().optional(),
   canvasState: z.object({
     zoom: z.number().positive(),

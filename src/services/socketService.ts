@@ -274,14 +274,14 @@ export class SocketService {
 
     // Set up the actual socket listener if this is the first listener for this event
     if (listeners.size === 1 && this.socket) {
-      this.socket.on(eventName, listener);
+      this.socket.on(eventName as string, listener as any);
     }
 
     // Return cleanup function
     return () => {
       listeners.delete(listener);
       if (listeners.size === 0) {
-        this.socket?.off(eventName, listener);
+        this.socket?.off(eventName as string, listener as any);
         this.eventListeners.delete(eventName);
       }
     };

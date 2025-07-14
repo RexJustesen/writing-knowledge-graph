@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Canvas, { CanvasHandle } from './Canvas';
 import Toolbar from './Toolbar';
 import ActNavigation from './ActNavigation';
@@ -81,6 +81,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const canvasRef = React.useRef<CanvasHandle>(null);
   const { user, logout } = useAuth();
   const [isSyncing, setIsSyncing] = useState(false);
+  const [saveQueueLength, setSaveQueueLength] = useState(0);
 
   // Load project on mount or when projectId changes
   useEffect(() => {
@@ -300,41 +301,108 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     };
   };
 
+  // State for reliable saving
+  const [saveQueue, setSaveQueue] = useState<Project[]>([]);
+  const [isProcessingSaveQueue, setIsProcessingSaveQueue] = useState(false);
+  const saveQueueRef = useRef<Project[]>([]);
+  const isProcessingSaveQueueRef = useRef(false);
+
+  // Update refs when state changes
+  useEffect(() => {
+    saveQueueRef.current = saveQueue;
+    setSaveQueueLength(saveQueue.length);
+  }, [saveQueue]);
+
+  useEffect(() => {
+    isProcessingSaveQueueRef.current = isProcessingSaveQueue;
+  }, [isProcessingSaveQueue]);
+
   const handleProjectUpdate = async (updatedProject: Project, immediate = false) => {
     console.log('Project updated:', updatedProject);
     
-    // Detect type of changes
-    const changeType = detectChanges(lastSavedProject, updatedProject);
+    // Always update the current project state immediately
+    setProject(updatedProject);
     
-    if (changeType === 'none') {
-      console.log('No changes detected, skipping save');
+    // Save to localStorage immediately for backup
+    localStorage.setItem(`writing-graph-project-${updatedProject.id}`, JSON.stringify(updatedProject));
+    
+    // Add to save queue
+    addToSaveQueue(updatedProject, immediate);
+  };
+
+  // Add project to save queue and process it
+  const addToSaveQueue = (project: Project, immediate: boolean) => {
+    // Clear any existing autosave timeout since we're queuing this save
+    if (autoSaveTimeoutId) {
+      clearTimeout(autoSaveTimeoutId);
+      setAutoSaveTimeoutId(null);
+    }
+
+    // Simply replace the queue with the latest project (no need for complex queue management)
+    setSaveQueue([project]);
+
+    // Process queue immediately or with delay
+    if (immediate) {
+      processSaveQueue();
+    } else {
+      // Schedule queue processing with delay
+      const timeoutId = setTimeout(() => {
+        processSaveQueue();
+      }, AUTOSAVE_DELAY);
+      setAutoSaveTimeoutId(timeoutId);
+    }
+  };
+
+  // Process the save queue sequentially
+  const processSaveQueue = async () => {
+    if (isProcessingSaveQueueRef.current) {
+      console.log('Save queue already being processed, skipping...');
       return;
     }
 
-    setProject(updatedProject);
-    setHasUnsavedChanges(changeType === 'content');
-    
-    // Save to localStorage only for content changes
-    if (changeType === 'content') {
-      localStorage.setItem(`writing-graph-project-${updatedProject.id}`, JSON.stringify(updatedProject));
-    }
-    
-    // Clear existing autosave timeout
-    if (autoSaveTimeoutId) {
-      clearTimeout(autoSaveTimeoutId);
+    if (saveQueueRef.current.length === 0) {
+      console.log('Save queue is empty, nothing to process');
+      return;
     }
 
-    if (immediate) {
-      // Sync immediately for critical changes
-      performAutoSave(updatedProject, changeType === 'content' ? 'content' : 'lightweight');
-    } else {
-      // Schedule autosave with appropriate delay
-      const delay = changeType === 'content' ? AUTOSAVE_DELAY : LIGHTWEIGHT_SYNC_DELAY;
-      const timeoutId = setTimeout(() => {
-        performAutoSave(updatedProject, changeType);
-      }, delay);
+    isProcessingSaveQueueRef.current = true;
+    setIsProcessingSaveQueue(true);
+    setIsSyncing(true);
+
+    try {
+      // Get the project to save (should only be one since we replace the queue)
+      const projectToSave = saveQueueRef.current[0];
       
-      setAutoSaveTimeoutId(timeoutId);
+      console.log(`Processing save queue: saving project ${projectToSave.id}`);
+      
+      // Detect what type of changes we have
+      const changeType = detectChanges(lastSavedProject, projectToSave);
+      
+      if (changeType !== 'none') {
+        if (changeType === 'lightweight') {
+          await lightweightSync(projectToSave);
+        } else {
+          await syncProjectContent(projectToSave);
+        }
+        
+        // Update last saved project only after successful save
+        setLastSavedProject({ ...projectToSave });
+        setHasUnsavedChanges(false);
+        setLastAutoSave(new Date());
+        
+        console.log(`Successfully saved project (${changeType}) at`, new Date().toLocaleTimeString());
+      }
+      
+      // Clear the queue after successful processing
+      setSaveQueue([]);
+      
+    } catch (error) {
+      console.error('Failed to save project:', error);
+      // On error, we'll just leave it in the queue for potential retry
+    } finally {
+      isProcessingSaveQueueRef.current = false;
+      setIsProcessingSaveQueue(false);
+      setIsSyncing(false);
     }
   };
 
@@ -371,6 +439,12 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
   const handleActChange = (actId: string) => {
     // Act change is handled in handleProjectUpdate when ActNavigation updates the project
+    // Trigger zoom-to-fit for the new act's content
+    setTimeout(() => {
+      if (canvasRef.current) {
+        canvasRef.current.handleZoomToFit();
+      }
+    }, 100); // Small delay to ensure act content has been rendered
   };
 
   const handleZoomToFit = () => {
@@ -441,7 +515,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       for (const act of actsToCreate) {
         const createdAct = await ProjectApiService.createAct(project.id, {
           name: act.name,
-          description: act.description,
+          description: act.description || null, // Convert undefined to null
           order: act.order
         });
         actIdMapping[act.id] = createdAct.id;
@@ -452,7 +526,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       for (const act of actsToUpdate) {
         await ProjectApiService.updateAct(project.id, act.id, {
           name: act.name,
-          description: act.description,
+          description: act.description || null, // Convert undefined to null
           order: act.order
         });
       }
@@ -595,7 +669,8 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
                 x: plotPoint.position.x,
                 y: plotPoint.position.y
               } : undefined,
-              color: plotPoint.color
+              color: plotPoint.color,
+              actId: plotPoint.actId // Include actId in the update
             });
             console.log(`Updated plot point: ${plotPoint.title}`);
           } catch (error) {
@@ -776,44 +851,17 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   };
 
   // Optimized autosave function
-  const performAutoSave = async (project: Project, changeType: 'lightweight' | 'content') => {
-    try {
-      setIsSyncing(true);
-      
-      if (changeType === 'lightweight') {
-        // Only sync UI state changes (fast)
-        await lightweightSync(project);
-      } else {
-        // Sync all content changes (slower)
-        await syncProjectContent(project);
-      }
 
-      setLastSavedProject({ ...project });
-      setHasUnsavedChanges(false);
-      setLastAutoSave(new Date());
-      
-      console.log(`Auto-saved (${changeType}) at`, new Date().toLocaleTimeString());
-    } catch (error) {
-      console.error('Auto-save failed:', error);
-      // Don't clear unsaved changes flag on failure
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Force autosave after maximum interval if changes exist
+  // Process any remaining saves when component unmounts
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
-
-    const forceAutoSaveTimeout = setTimeout(() => {
-      if (project && hasUnsavedChanges) {
-        console.log('Force auto-save triggered after max interval');
-        performAutoSave(project, 'content');
+    return () => {
+      if (saveQueueRef.current.length > 0) {
+        console.log('Component unmounting, processing remaining saves...');
+        // Process synchronously on unmount
+        processSaveQueue();
       }
-    }, AUTOSAVE_MAX_INTERVAL);
-
-    return () => clearTimeout(forceAutoSaveTimeout);
-  }, [hasUnsavedChanges, project]);
+    };
+  }, []);
 
   if (isLoading) {
     return (
@@ -883,7 +931,9 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
                 <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                 </svg>
-                <span className="text-xs">Saving...</span>
+                <span className="text-xs">
+                  {saveQueueLength > 0 ? `Saving (${saveQueueLength} queued)` : 'Saving...'}
+                </span>
               </div>
             ) : hasUnsavedChanges ? (
               <div className="flex items-center gap-1 text-amber-600">

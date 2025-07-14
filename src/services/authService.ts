@@ -61,8 +61,13 @@ export class AuthService {
 
   static async logout(): Promise<void> {
     try {
-      // Call logout endpoint to invalidate tokens on server
-      await ApiClient.post('/api/auth/logout');
+      // Get refresh token to send to server
+      const refreshToken = this.getRefreshToken();
+      
+      if (refreshToken) {
+        // Call logout endpoint to invalidate tokens on server
+        await ApiClient.post('/api/auth/logout', { refreshToken });
+      }
     } catch (error) {
       console.error('Logout API call failed:', error);
     } finally {

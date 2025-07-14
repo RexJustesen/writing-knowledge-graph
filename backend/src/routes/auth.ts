@@ -199,14 +199,17 @@ router.post('/refresh', async (req, res, next) => {
 // Logout (remove session)
 router.post('/logout', async (req, res, next) => {
   try {
-    const { refreshToken } = validateRequest(refreshTokenSchema, req.body);
+    // Make refreshToken optional for logout - if user doesn't have one, we still want to allow logout
+    const refreshToken = req.body?.refreshToken;
 
-    // Delete session
-    await db.userSession.deleteMany({
-      where: { 
-        refreshToken: refreshToken
-      }
-    });
+    if (refreshToken && typeof refreshToken === 'string' && refreshToken.trim()) {
+      // Delete session if refresh token is provided
+      await db.userSession.deleteMany({
+        where: { 
+          refreshToken: refreshToken
+        }
+      });
+    }
 
     res.json({ message: 'Logged out successfully' });
   } catch (error) {

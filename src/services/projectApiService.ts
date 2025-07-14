@@ -144,13 +144,13 @@ export interface UpdateProjectRequest {
 
 export interface CreateActRequest {
   name: string;
-  description?: string;
+  description?: string | null;
   order: number;
 }
 
 export interface UpdateActRequest {
   name?: string;
-  description?: string;
+  description?: string | null;
   order?: number;
 }
 
@@ -175,6 +175,7 @@ export interface UpdatePlotPointRequest {
   };
   color?: string;
   order?: number;
+  actId?: string;
 }
 
 export interface CreateSceneRequest {
