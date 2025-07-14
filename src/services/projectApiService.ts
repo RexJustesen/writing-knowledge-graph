@@ -69,7 +69,12 @@ export interface Character {
   id: string;
   name: string;
   description?: string;
-  characterType: 'protagonist' | 'antagonist' | 'supporting' | 'minor' | 'other';
+  appearance?: string;
+  personality?: string;
+  motivation?: string;
+  backstory?: string;
+  characterType: 'PROTAGONIST' | 'ANTAGONIST' | 'SUPPORTING' | 'MINOR';
+  arcNotes?: string;
   projectId: string;
   createdAt: string;
   updatedAt: string;
@@ -204,13 +209,23 @@ export interface UpdateSceneRequest {
 export interface CreateCharacterRequest {
   name: string;
   description?: string;
+  appearance?: string;
+  personality?: string;
+  motivation?: string;
+  backstory?: string;
   characterType: Character['characterType'];
+  arcNotes?: string;
 }
 
 export interface UpdateCharacterRequest {
   name?: string;
   description?: string;
+  appearance?: string;
+  personality?: string;
+  motivation?: string;
+  backstory?: string;
   characterType?: Character['characterType'];
+  arcNotes?: string;
 }
 
 export interface CreateSettingRequest {

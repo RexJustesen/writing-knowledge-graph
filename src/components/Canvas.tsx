@@ -172,7 +172,6 @@ const calculateScenePositionSafe = (
 interface CanvasProps {
   project: Project;
   onProjectUpdate: (project: Project) => void;
-  onZoomToFit?: () => void;
 }
 
 export interface CanvasHandle {
@@ -191,6 +190,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const [undoStack, setUndoStack] = useState<Project[]>([]); // For undo functionality
   const [undoExpandedStates, setUndoExpandedStates] = useState<(string | null)[]>([]); // Track expanded states for undo
   const [isUndoing, setIsUndoing] = useState(false); // Flag to prevent automatic rebuild during undo
+  const [draggedNodes, setDraggedNodes] = useState<Map<string, { x: number; y: number }>>(new Map()); // Track currently dragged nodes
+  const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first project load
+  const [hasTriggeredInitialZoom, setHasTriggeredInitialZoom] = useState(false); // Prevent double initial zoom
 
   // Track if component has mounted to prevent hydration errors
   useEffect(() => {
@@ -264,6 +266,41 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
     return () => clearInterval(autoSaveInterval);
   }, [project, tempNode, onProjectUpdate]);
+
+  // Function to update plot point position in project data
+  const updatePlotPointPosition = (plotPointId: string, newPosition: { x: number; y: number }) => {
+    const updatedProject = {
+      ...project,
+      plotPoints: project.plotPoints.map(pp => 
+        pp.id === plotPointId 
+          ? { ...pp, position: newPosition }
+          : pp
+      ),
+      lastModified: new Date()
+    };
+    
+    console.log(`Updated plot point ${plotPointId} position to`, newPosition);
+    onProjectUpdate(updatedProject); // This will trigger autosave
+  };
+
+  // Function to update scene position in project data
+  const updateScenePosition = (sceneId: string, newPosition: { x: number; y: number }) => {
+    const updatedProject = {
+      ...project,
+      plotPoints: project.plotPoints.map(pp => ({
+        ...pp,
+        scenes: pp.scenes.map(scene =>
+          scene.id === sceneId
+            ? { ...scene, position: newPosition }
+            : scene
+        )
+      })),
+      lastModified: new Date()
+    };
+    
+    console.log(`Updated scene ${sceneId} position to`, newPosition);
+    onProjectUpdate(updatedProject); // This will trigger autosave
+  };
 
   // Initialize Cytoscape instance
   useEffect(() => {
@@ -350,7 +387,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       ],
       layout: {
         name: 'preset',
-        fit: true,
+        fit: false,
         padding: 50
       },
       // Enable user interaction (PRD Section 6.2)
@@ -512,6 +549,64 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       }
     });
 
+    // Node drag event handlers for position tracking
+    // Track when dragging starts
+    cytoscapeInstance.on('grab', 'node[type="plot-point"], node[type="scene"]', (event) => {
+      const node = event.target;
+      const nodeId = node.id();
+      const position = node.position();
+      
+      // Add this node to the dragged nodes map
+      setDraggedNodes(prev => {
+        const newMap = new Map(prev);
+        newMap.set(nodeId, { x: position.x, y: position.y });
+        return newMap;
+      });
+      
+      console.log(`Started dragging node ${nodeId} from position`, position);
+    });
+
+    // Track when dragging ends and save new position
+    cytoscapeInstance.on('free', 'node[type="plot-point"], node[type="scene"]', (event) => {
+      const node = event.target;
+      const nodeId = node.id();
+      const newPosition = node.position();
+      
+      // Get the original position from the dragged nodes map
+      const originalPosition = draggedNodes.get(nodeId);
+      
+      if (originalPosition) {
+        // Check if position actually changed (avoid unnecessary saves)
+        const positionChanged = 
+          Math.abs(newPosition.x - originalPosition.x) > 1 ||
+          Math.abs(newPosition.y - originalPosition.y) > 1;
+          
+        if (positionChanged) {
+          console.log(`Node ${nodeId} moved from`, originalPosition, 'to', newPosition);
+          
+          // Update the project data with new position after a short delay
+          // to allow the drag operation to complete fully
+          setTimeout(() => {
+            const nodeType = node.data('type');
+            if (nodeType === 'plot-point') {
+              updatePlotPointPosition(nodeId, { x: newPosition.x, y: newPosition.y });
+            } else if (nodeType === 'scene') {
+              updateScenePosition(nodeId, { x: newPosition.x, y: newPosition.y });
+            }
+          }, 100);
+        }
+      }
+      
+      // Remove this node from the dragged nodes map after a delay
+      setTimeout(() => {
+        setDraggedNodes(prev => {
+          const newMap = new Map(prev);
+          newMap.delete(nodeId);
+          return newMap;
+        });
+      }, 200);
+    });
+
     return () => {
       cytoscapeInstance.destroy();
     };
@@ -519,7 +614,16 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
   // Update graph when project data changes
   useEffect(() => {
-    if (!cy || isUndoing) return; // Skip rebuild during undo
+    console.log('🏗️ Canvas: useEffect triggered', { 
+      hasCy: !!cy, 
+      isUndoing, 
+      draggedNodesCount: draggedNodes.size,
+      isInitialLoad,
+      hasTriggeredInitialZoom,
+      plotPointsCount: project.plotPoints?.length || 0
+    });
+    
+    if (!cy || isUndoing || draggedNodes.size > 0) return; // Skip rebuild during undo or while any nodes are being dragged
 
     // Store the currently selected node ID and position before updating
     const currentlySelectedId = selectedNode ? 
@@ -527,7 +631,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     const currentCenterPosition = cy.pan();
     const currentZoomLevel = cy.zoom();
 
-    const elements = generateCytoscapeElements(project, currentZoom, expandedPlotPoint, tempNode);
+    const elements = generateCytoscapeElements(project, project.currentZoomLevel, expandedPlotPoint, tempNode);
     cy.elements().remove();
     cy.add(elements);
     
@@ -537,6 +641,26 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       fit: false, // Don't auto-fit to prevent jumping
       padding: 50 
     }).run();
+
+    // Handle initial zoom-to-fit on first project load - only once!
+    if (isInitialLoad && !hasTriggeredInitialZoom && elements.length > 0) {
+      console.log('🔄 Canvas: Triggering initial zoom-to-fit animation');
+      setHasTriggeredInitialZoom(true);
+      setTimeout(() => {
+        if (cy) {
+          cy.animate({
+            fit: { eles: cy.nodes(), padding: 50 }
+          }, {
+            duration: 500,
+            easing: 'ease-out'
+          });
+        }
+        setIsInitialLoad(false);
+      }, 100);
+    } else if (isInitialLoad && hasTriggeredInitialZoom) {
+      console.log('🔄 Canvas: Skipping initial zoom - already triggered');
+      setIsInitialLoad(false);
+    }
 
     // Only restore selection without animation to prevent double animation
     if (currentlySelectedId) {
@@ -550,7 +674,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         }
       }, 50); // Reduced delay for faster response
     }
-  }, [cy, project, currentZoom, expandedPlotPoint, tempNode, selectedNode, isUndoing]);
+  }, [cy, project, expandedPlotPoint, tempNode, selectedNode, isUndoing, draggedNodes, isInitialLoad]);
 
   // Generate Cytoscape elements based on current zoom level and current act
   const generateCytoscapeElements = (project: Project, zoomLevel: ZoomLevel, expandedPlotPointId?: string | null, tempNode?: PlotPoint | null) => {
@@ -731,9 +855,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     return [...nodes, ...edges];
   };
 
-  // Helper function to check if a scene position is valid (not at origin or undefined)
+  // Helper function to check if a scene position is valid (not undefined)
   const isValidScenePosition = (position?: { x: number; y: number }): boolean => {
-    return !!(position && (position.x !== 0 || position.y !== 0));
+    return !!(position && typeof position.x === 'number' && typeof position.y === 'number');
   };
 
   // Calculate position for scenes around plot point (satellite positioning)
@@ -999,12 +1123,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
   // Handle zoom to fit functionality
   const handleZoomToFit = () => {
+    console.log('🔍 Canvas: handleZoomToFit called');
     if (!cy) return;
 
     const currentActPlotPoints = project.plotPoints.filter(pp => pp.actId === project.currentActId);
     
     if (currentActPlotPoints.length === 0) {
       // No plot points in current act, just center the view with animation
+      console.log('🔍 Canvas: No plot points, fitting all nodes');
       cy.animate({
         fit: { eles: cy.nodes(), padding: 50 }
       }, {
@@ -1121,13 +1247,25 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const handleSceneAdded = (plotPointId: string) => {
     setExpandedPlotPoint(plotPointId);
     
-    // Instead of full regeneration, try to maintain smooth focus on the selected plot point
-    if (cy && selectedNode) {
+    // Force immediate canvas regeneration to show new scenes
+    if (cy) {
+      // Small delay to ensure the project state has been updated
       setTimeout(() => {
+        const elements = generateCytoscapeElements(project, currentZoom, plotPointId, tempNode);
+        cy.elements().remove();
+        cy.add(elements);
+        
+        // Use preset layout to maintain positions
+        cy.layout({ 
+          name: 'preset',
+          fit: false,
+          padding: 50 
+        }).run();
+        
+        // Maintain focus on the plot point with scenes now visible
         const currentNode = cy.getElementById(plotPointId);
         if (currentNode.length > 0) {
           currentNode.select();
-          // Only animate if the node has moved significantly
           cy.animate({
             center: { eles: currentNode },
             zoom: cy.zoom()
@@ -1136,7 +1274,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
             easing: 'ease-out'
           });
         }
-      }, 100);
+      }, 50); // Small delay to ensure state updates are complete
     }
   };
 

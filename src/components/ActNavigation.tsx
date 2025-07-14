@@ -82,7 +82,7 @@ const NewActDialog: React.FC<NewActDialogProps> = ({
                 setActName(e.target.value);
                 setNameError('');
               }}
-              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+              className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900 ${
                 nameError ? 'border-red-500' : 'border-gray-300'
               }`}
               placeholder="e.g., Setup, Rising Action, Climax"
@@ -101,7 +101,7 @@ const NewActDialog: React.FC<NewActDialogProps> = ({
               id="actDescription"
               value={actDescription}
               onChange={(e) => setActDescription(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
               placeholder="Brief description of this act's purpose"
               rows={3}
             />

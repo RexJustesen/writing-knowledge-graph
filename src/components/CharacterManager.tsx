@@ -28,8 +28,9 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
   const [formData, setFormData] = useState<Partial<Character>>({
     name: '',
     appearance: '',
-    emotions: '',
-    motivation: ''
+    personality: '',
+    motivation: '',
+    characterType: 'minor'
   });
   const [nameError, setNameError] = useState('');
 
@@ -39,8 +40,9 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
       setFormData({
         name: character?.name || '',
         appearance: character?.appearance || '',
-        emotions: character?.emotions || '',
-        motivation: character?.motivation || ''
+        personality: character?.personality || '',
+        motivation: character?.motivation || '',
+        characterType: character?.characterType || 'minor'
       });
       setNameError('');
     }
@@ -70,8 +72,9 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
       id: character?.id || `char-${Date.now()}`,
       name: trimmedName,
       appearance: formData.appearance?.trim(),
-      emotions: formData.emotions?.trim(),
-      motivation: formData.motivation?.trim()
+      personality: formData.personality?.trim(),
+      motivation: formData.motivation?.trim(),
+      characterType: formData.characterType || 'minor'
     };
     
     onSave(characterData);
@@ -82,8 +85,9 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
     setFormData({
       name: '',
       appearance: '',
-      emotions: '',
-      motivation: ''
+      personality: '',
+      motivation: '',
+      characterType: 'minor'
     });
     setNameError('');
     onClose();
@@ -146,29 +150,46 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
           </div>
           
           <div>
+            <label htmlFor="characterType" className="block text-sm font-medium text-gray-900 mb-2">
+              Character Type
+            </label>
+            <select
+              id="characterType"
+              value={formData.characterType}
+              onChange={(e) => setFormData(prev => ({ ...prev, characterType: e.target.value as Character['characterType'] }))}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+            >
+              <option value="protagonist">Protagonist</option>
+              <option value="antagonist">Antagonist</option>
+              <option value="supporting">Supporting</option>
+              <option value="minor">Minor</option>
+            </select>
+          </div>
+          
+          <div>
             <label htmlFor="characterAppearance" className="block text-sm font-medium text-gray-900 mb-2">
-              Appearance
+              Physical Appearance
             </label>
             <textarea
               id="characterAppearance"
               value={formData.appearance}
               onChange={(e) => setFormData(prev => ({ ...prev, appearance: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="Physical description, clothing, etc."
+              placeholder="Physical description, clothing, distinctive features..."
               rows={3}
             />
           </div>
           
           <div>
-            <label htmlFor="characterEmotions" className="block text-sm font-medium text-gray-900 mb-2">
-              Emotions & Personality
+            <label htmlFor="characterPersonality" className="block text-sm font-medium text-gray-900 mb-2">
+              Personality & Emotions
             </label>
             <textarea
-              id="characterEmotions"
-              value={formData.emotions}
-              onChange={(e) => setFormData(prev => ({ ...prev, emotions: e.target.value }))}
+              id="characterPersonality"
+              value={formData.personality}
+              onChange={(e) => setFormData(prev => ({ ...prev, personality: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="Current emotional state, personality traits"
+              placeholder="Personality traits, emotional tendencies, quirks..."
               rows={3}
             />
           </div>
@@ -182,7 +203,7 @@ const CharacterModal: React.FC<CharacterModalProps> = ({
               value={formData.motivation}
               onChange={(e) => setFormData(prev => ({ ...prev, motivation: e.target.value }))}
               className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-              placeholder="What drives this character, their goals"
+              placeholder="What drives this character? Their goals and desires..."
               rows={3}
             />
           </div>
@@ -320,7 +341,19 @@ const CharacterManager: React.FC<CharacterManagerProps> = ({ project, onProjectU
                       className="flex justify-between items-center p-2 hover:bg-gray-50 rounded"
                     >
                       <div className="flex-1">
-                        <div className="font-medium text-gray-900">{character.name}</div>
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium text-gray-900">{character.name}</div>
+                          {character.characterType && (
+                            <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${
+                              character.characterType === 'protagonist' ? 'bg-blue-100 text-blue-800' :
+                              character.characterType === 'antagonist' ? 'bg-red-100 text-red-800' :
+                              character.characterType === 'supporting' ? 'bg-green-100 text-green-800' :
+                              'bg-gray-100 text-gray-800'
+                            }`}>
+                              {character.characterType.charAt(0).toUpperCase() + character.characterType.slice(1)}
+                            </span>
+                          )}
+                        </div>
                         {character.appearance && (
                           <div className="text-sm text-gray-500 truncate">{character.appearance}</div>
                         )}

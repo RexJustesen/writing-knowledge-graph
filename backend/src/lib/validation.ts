@@ -126,7 +126,7 @@ export const createCharacterSchema = z.object({
   personality: z.string().max(1000, 'Personality description too long').optional(),
   motivation: z.string().max(1000, 'Motivation description too long').optional(),
   backstory: z.string().max(2000, 'Backstory too long').optional(),
-  characterType: z.enum(['PROTAGONIST', 'ANTAGONIST', 'SUPPORTING', 'MINOR']).optional(),
+  characterType: z.enum(['PROTAGONIST', 'ANTAGONIST', 'SUPPORTING', 'MINOR', 'protagonist', 'antagonist', 'supporting', 'minor']).optional(),
   arcNotes: z.string().max(2000, 'Arc notes too long').optional(),
 });
 
@@ -137,7 +137,7 @@ export const updateCharacterSchema = z.object({
   personality: z.string().max(1000).optional(),
   motivation: z.string().max(1000).optional(),
   backstory: z.string().max(2000).optional(),
-  characterType: z.enum(['PROTAGONIST', 'ANTAGONIST', 'SUPPORTING', 'MINOR']).optional(),
+  characterType: z.enum(['PROTAGONIST', 'ANTAGONIST', 'SUPPORTING', 'MINOR', 'protagonist', 'antagonist', 'supporting', 'minor']).optional(),
   arcNotes: z.string().max(2000).optional(),
 });
 

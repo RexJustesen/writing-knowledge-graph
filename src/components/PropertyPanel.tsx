@@ -30,6 +30,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
   onSaveUndoState
 }) => {
   const [formData, setFormData] = useState<any>({});
+  const [currentScenes, setCurrentScenes] = useState<Scene[]>([]); // Local state for scenes
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showCharacterInfo, setShowCharacterInfo] = useState<{ isOpen: boolean; character: Character | null }>({
     isOpen: false,
@@ -58,11 +59,13 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
       // For temporary nodes, use tempNode data
       if (nodeId && nodeId.startsWith('temp-') && tempNode) {
         setFormData({ ...tempNode });
+        setCurrentScenes(tempNode.scenes || []);
       } else if (nodeId) {
         // For permanent nodes, get fresh data from project to reflect any deletions
         const currentPlotPoint = project.plotPoints.find(pp => pp.id === nodeId);
         if (currentPlotPoint) {
           setFormData({ ...currentPlotPoint });
+          setCurrentScenes(currentPlotPoint.scenes || []);
         } else {
           // Fallback to node data if not found in project (for scenes, characters, etc.)
           if (typeof actualNode.data === 'function') {
@@ -77,6 +80,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
           } else if (actualNode?.data) {
             setFormData({ ...actualNode.data });
           }
+          setCurrentScenes([]); // Reset scenes for non-plot-point nodes
         }
       }
     }
@@ -136,14 +140,18 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
                    actualNode?.data?.id || nodeData?.id;
     
+    // Update local scenes state
+    const updatedScenes = currentScenes.map(scene => 
+      scene.id === sceneId ? { ...scene, ...updates } : scene
+    );
+    setCurrentScenes(updatedScenes);
+    
     // Check if this is a temporary node
     if (nodeId && nodeId.startsWith('temp-') && tempNode && onTempNodeUpdate) {
       // Update the temporary node
       const updatedTempNode = {
         ...tempNode,
-        scenes: tempNode.scenes.map(scene => 
-          scene.id === sceneId ? { ...scene, ...updates } : scene
-        )
+        scenes: updatedScenes
       };
       onTempNodeUpdate(updatedTempNode);
     } else {
@@ -166,6 +174,21 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
                    actualNode?.data?.id || nodeData?.id;
     
+    // Calculate proper initial position for the new scene
+    const plotPoint = project.plotPoints.find(pp => pp.id === nodeId) || 
+                     (tempNode && nodeId === tempNode.id ? tempNode : null);
+    
+    let scenePosition = { x: 0, y: 0 };
+    if (plotPoint && plotPoint.position) {
+      const existingSceneCount = currentScenes.length;
+      const radius = 120;
+      const angle = (existingSceneCount * 2 * Math.PI) / Math.max(existingSceneCount + 1, 1);
+      scenePosition = {
+        x: plotPoint.position.x + radius * Math.cos(angle),
+        y: plotPoint.position.y + radius * Math.sin(angle)
+      };
+    }
+    
     const newScene: Scene = {
       id: `scene-${Date.now()}`,
       title: 'New Scene',
@@ -177,15 +200,19 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
         description: ''
       },
       items: [],
-      position: { x: 0, y: 0 } // Will be fixed by overlap detection or calculated properly during save
+      position: scenePosition // Use calculated position instead of origin
     };
+    
+    // Update local scenes state
+    const updatedScenes = [...currentScenes, newScene];
+    setCurrentScenes(updatedScenes);
     
     // Check if this is a temporary node
     if (nodeId && nodeId.startsWith('temp-') && tempNode && onTempNodeUpdate) {
       // Update the temporary node
       const updatedTempNode = {
         ...tempNode,
-        scenes: [...tempNode.scenes, newScene]
+        scenes: updatedScenes
       };
       onTempNodeUpdate(updatedTempNode);
       // Auto-expand the temporary plot point to show the new scene
@@ -198,7 +225,7 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
       const plotPointIndex = updatedProject.plotPoints.findIndex(pp => pp.id === nodeId);
       
       if (plotPointIndex !== -1) {
-        updatedProject.plotPoints[plotPointIndex].scenes.push(newScene);
+        updatedProject.plotPoints[plotPointIndex].scenes = updatedScenes;
         updatedProject.lastModified = new Date();
         onProjectUpdate(updatedProject);
         // Auto-expand the plot point to show the new scene
@@ -214,12 +241,16 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
                    actualNode?.data?.id || nodeData?.id;
     
+    // Update local scenes state
+    const updatedScenes = currentScenes.filter(scene => scene.id !== sceneId);
+    setCurrentScenes(updatedScenes);
+    
     // Check if this is a temporary node
     if (nodeId && nodeId.startsWith('temp-') && tempNode && onTempNodeUpdate) {
       // Update the temporary node
       const updatedTempNode = {
         ...tempNode,
-        scenes: tempNode.scenes.filter(scene => scene.id !== sceneId)
+        scenes: updatedScenes
       };
       onTempNodeUpdate(updatedTempNode);
     } else {
@@ -381,17 +412,18 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
           ...formData,
           id: `plot-${Date.now()}`, // Generate a proper ID
           position: position,
-          scenes: tempNode?.scenes || []
+          scenes: currentScenes // Use local scenes state
         };
         updatedProject.plotPoints.push(newPlotPoint);
       } else {
-        // Update existing plot point - preserve existing scenes that may have been modified
+        // Update existing plot point - use local scenes state (including deletions)
         const plotPointIndex = updatedProject.plotPoints.findIndex(pp => pp.id === nodeId);
         if (plotPointIndex !== -1) {
           const currentPlotPoint = updatedProject.plotPoints[plotPointIndex];
           updatedProject.plotPoints[plotPointIndex] = { 
-            ...currentPlotPoint, // Preserve existing data including current scenes
-            ...formData // Apply form updates (title, color, act, etc.)
+            ...currentPlotPoint, // Preserve existing data
+            ...formData, // Apply form updates (title, color, act, etc.)
+            scenes: currentScenes // Use local scenes state which includes deletions
           };
         }
       }
@@ -456,18 +488,8 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
   };
 
   const renderPlotPointForm = () => {
-    // Get node ID using proper Cytoscape element method
-    const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
-                   actualNode?.data?.id || nodeData?.id;
-    
-    // Check if this is a temporary node and use tempNode data, otherwise use project data
-    let scenes: Scene[] = [];
-    if (nodeId && nodeId.startsWith('temp-') && tempNode) {
-      scenes = tempNode.scenes || [];
-    } else {
-      const currentPlotPoint = project.plotPoints.find(pp => pp.id === nodeId);
-      scenes = currentPlotPoint?.scenes || [];
-    }
+    // Use local scenes state which reflects current changes including deletions
+    const scenes = currentScenes;
 
     return (
       <div className="space-y-4">
@@ -698,37 +720,51 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
           placeholder="Character name"
         />
       </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-900 mb-1">Character Type</label>
+        <select
+          value={formData.characterType || 'minor'}
+          onChange={(e) => handleInputChange('characterType', e.target.value)}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+        >
+          <option value="protagonist">Protagonist</option>
+          <option value="antagonist">Antagonist</option>
+          <option value="supporting">Supporting</option>
+          <option value="minor">Minor</option>
+        </select>
+      </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-900 mb-1">Appearance</label>
+        <label className="block text-sm font-medium text-gray-900 mb-1">Physical Appearance</label>
         <textarea
           value={formData.appearance || ''}
           onChange={(e) => handleInputChange('appearance', e.target.value)}
           rows={2}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          placeholder="Physical description"
+          placeholder="Physical description, clothing, distinctive features..."
         />
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-900 mb-1">Emotions</label>
+        <label className="block text-sm font-medium text-gray-900 mb-1">Personality & Emotions</label>
         <textarea
-          value={formData.emotions || ''}
-          onChange={(e) => handleInputChange('emotions', e.target.value)}
+          value={formData.personality || ''}
+          onChange={(e) => handleInputChange('personality', e.target.value)}
           rows={2}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          placeholder="Emotional state in this scene"
+          placeholder="Personality traits, emotional tendencies, quirks..."
         />
       </div>
       
       <div>
-        <label className="block text-sm font-medium text-gray-900 mb-1">Motivation</label>
+        <label className="block text-sm font-medium text-gray-900 mb-1">Motivation & Goals</label>
         <textarea
           value={formData.motivation || ''}
           onChange={(e) => handleInputChange('motivation', e.target.value)}
           rows={2}
           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
-          placeholder="What drives this character?"
+          placeholder="What drives this character? Their goals and desires..."
         />
       </div>
     </div>
@@ -904,10 +940,10 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
                 </div>
               )}
               
-              {showCharacterInfo.character.emotions && (
+              {showCharacterInfo.character.personality && (
                 <div>
-                  <h4 className="font-medium text-gray-900 mb-1">Emotions & Personality</h4>
-                  <p className="text-gray-700 text-sm">{showCharacterInfo.character.emotions}</p>
+                  <h4 className="font-medium text-gray-900 mb-1">Personality & Emotions</h4>
+                  <p className="text-gray-700 text-sm">{showCharacterInfo.character.personality}</p>
                 </div>
               )}
               
@@ -917,8 +953,15 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
                   <p className="text-gray-700 text-sm">{showCharacterInfo.character.motivation}</p>
                 </div>
               )}
+
+              {showCharacterInfo.character.characterType && (
+                <div>
+                  <h4 className="font-medium text-gray-900 mb-1">Character Type</h4>
+                  <p className="text-gray-700 text-sm capitalize">{showCharacterInfo.character.characterType}</p>
+                </div>
+              )}
               
-              {!showCharacterInfo.character.appearance && !showCharacterInfo.character.emotions && !showCharacterInfo.character.motivation && (
+              {!showCharacterInfo.character.appearance && !showCharacterInfo.character.personality && !showCharacterInfo.character.motivation && (
                 <p className="text-gray-500 italic">No additional character information provided.</p>
               )}
             </div>

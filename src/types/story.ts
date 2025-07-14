@@ -22,8 +22,9 @@ export interface Character {
   id: string;
   name: string;
   appearance?: string;
-  emotions?: string;
+  personality?: string;
   motivation?: string;
+  characterType?: 'protagonist' | 'antagonist' | 'supporting' | 'minor';
 }
 
 export interface Setting {

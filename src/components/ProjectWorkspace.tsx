@@ -5,7 +5,7 @@ import Canvas, { CanvasHandle } from './Canvas';
 import Toolbar from './Toolbar';
 import ActNavigation from './ActNavigation';
 import { Project as BackendProject, ProjectApiService } from '@/services/projectApiService';
-import { Project, ZoomLevel } from '../types/story';
+import { Project, ZoomLevel, Scene } from '../types/story';
 import { useAuth } from '@/contexts/AuthContext';
 
 // Helper function to generate a unique position for new plot points
@@ -80,6 +80,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const [showUserMenu, setShowUserMenu] = useState(false);
   const canvasRef = React.useRef<CanvasHandle>(null);
   const { user, logout } = useAuth();
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Load project on mount or when projectId changes
   useEffect(() => {
@@ -126,18 +127,20 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
             try {
               const scenes = await ProjectApiService.getScenes(backendProject.id, plotPoint.id);
               
-              const frontendScenes = scenes.map((scene, index) => ({
+              const frontendScenes: Scene[] = scenes.map((scene, index) => ({
                 id: scene.id,
                 title: scene.title,
                 synopsis: scene.synopsis || scene.content || '',
-                characterIds: [], // TODO: Load scene-character relationships
+                characterIds: (scene as any).characters ? (scene as any).characters.map((sc: any) => sc.character.id) : [], // Load scene-character relationships
                 setting: {
                   id: scene.settingId || 'default-setting',
                   name: 'Default Setting',
                   description: ''
                 },
-                items: [], // TODO: Load scene-item relationships
-                position: scene.position || generateScenePosition(plotPoint, frontendScenes, index) // Generate position around plot point
+                items: (scene as any).items ? (scene as any).items.map((si: any) => si.item.id) : [], // Load scene-item relationships
+                position: (scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number') 
+                  ? scene.position 
+                  : generateScenePosition(plotPoint, frontendScenes, index) // Generate position around plot point only if no valid position exists
               }));
 
               allPlotPoints.push({
@@ -186,9 +189,10 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         characters: characters.map(char => ({
           id: char.id,
           name: char.name,
-          appearance: char.description, // Map description to appearance
-          emotions: char.characterType, // Map character type to emotions for now
-          motivation: char.description, // Map description to motivation for now
+          appearance: char.appearance || char.description, // Use appearance field first, fallback to description
+          personality: char.personality, // Map personality field
+          motivation: char.motivation, // Map motivation field  
+          characterType: char.characterType?.toLowerCase() as 'protagonist' | 'antagonist' | 'supporting' | 'minor', // Map character type to lowercase
         })),
         plotPoints: allPlotPoints,
         currentZoomLevel: (backendProject.currentZoomLevel as ZoomLevel) || ZoomLevel.STORY_OVERVIEW,
@@ -297,83 +301,63 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   };
 
   const handleProjectUpdate = async (updatedProject: Project, immediate = false) => {
-    setProject(updatedProject);
+    console.log('Project updated:', updatedProject);
     
-    // For immediate updates (like zoom changes), only sync metadata
+    // Detect type of changes
+    const changeType = detectChanges(lastSavedProject, updatedProject);
+    
+    if (changeType === 'none') {
+      console.log('No changes detected, skipping save');
+      return;
+    }
+
+    setProject(updatedProject);
+    setHasUnsavedChanges(changeType === 'content');
+    
+    // Save to localStorage only for content changes
+    if (changeType === 'content') {
+      localStorage.setItem(`writing-graph-project-${updatedProject.id}`, JSON.stringify(updatedProject));
+    }
+    
+    // Clear existing autosave timeout
+    if (autoSaveTimeoutId) {
+      clearTimeout(autoSaveTimeoutId);
+    }
+
     if (immediate) {
-      debouncedBackendSync(updatedProject, true);
+      // Sync immediately for critical changes
+      performAutoSave(updatedProject, changeType === 'content' ? 'content' : 'lightweight');
     } else {
-      // For content changes, sync everything with debouncing
-      if (syncTimeoutId) {
-        clearTimeout(syncTimeoutId);
-      }
-      
+      // Schedule autosave with appropriate delay
+      const delay = changeType === 'content' ? AUTOSAVE_DELAY : LIGHTWEIGHT_SYNC_DELAY;
       const timeoutId = setTimeout(() => {
-        syncProjectContent(updatedProject);
-      }, 2000); // 2 second debounce for content changes
+        performAutoSave(updatedProject, changeType);
+      }, delay);
       
-      setSyncTimeoutId(timeoutId);
+      setAutoSaveTimeoutId(timeoutId);
     }
   };
 
-  // Debounced backend sync for frequent updates (zoom, pan, etc.)
-  const [syncTimeoutId, setSyncTimeoutId] = useState<NodeJS.Timeout | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // Lightweight sync for UI state changes only (zoom, focus, etc.)
+  const lightweightSync = async (updatedProject: Project) => {
+    if (!updatedProject.id) return;
+    
+    setIsSyncing(true);
+    try {
+      const updateData = {
+        currentActId: updatedProject.currentActId,
+        currentZoomLevel: updatedProject.currentZoomLevel?.toUpperCase() as 'STORY_OVERVIEW' | 'PLOT_POINT_FOCUS' | 'SCENE_DETAIL' | 'CHARACTER_FOCUS',
+        focusedElementId: updatedProject.focusedElementId,
+      };
 
-  const debouncedBackendSync = (updatedProject: Project, immediate = false) => {
-    if (syncTimeoutId) {
-      clearTimeout(syncTimeoutId);
-    }
-
-    const syncFn = async () => {
-      if (!updatedProject.id) return;
-      
-      setIsSyncing(true);
-      try {
-        const updateData = {
-          title: updatedProject.title,
-          description: updatedProject.description,
-          tags: updatedProject.tags,
-          status: updatedProject.status?.toUpperCase() as 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED' | 'ARCHIVED',
-          currentActId: updatedProject.currentActId,
-          currentZoomLevel: updatedProject.currentZoomLevel?.toUpperCase() as 'STORY_OVERVIEW' | 'PLOT_POINT_FOCUS' | 'SCENE_DETAIL' | 'CHARACTER_FOCUS',
-          focusedElementId: updatedProject.focusedElementId,
-          goals: updatedProject.goals ? {
-            targetWordCount: updatedProject.goals.targetWordCount,
-            targetActCount: updatedProject.goals.targetActCount,
-            targetPlotPointCount: updatedProject.goals.targetPlotPointCount,
-            deadline: updatedProject.goals.deadline?.toISOString(),
-            completionPercentage: 0
-          } : undefined
-        };
-
-        await ProjectApiService.updateProject(updatedProject.id, updateData);
-        console.log('Project synced to backend successfully');
-      } catch (error) {
-        console.error('Failed to sync project to backend:', error);
-        // TODO: Add toast notification for sync failures
-        // TODO: Implement retry mechanism or offline queue
-      } finally {
-        setIsSyncing(false);
-      }
-    };
-
-    if (immediate) {
-      syncFn();
-    } else {
-      const timeoutId = setTimeout(syncFn, 1000); // Debounce for 1 second
-      setSyncTimeoutId(timeoutId);
+      await ProjectApiService.updateProject(updatedProject.id, updateData);
+      console.log('Lightweight project sync completed');
+    } catch (error) {
+      console.error('Failed to sync project UI state:', error);
+    } finally {
+      setIsSyncing(false);
     }
   };
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (syncTimeoutId) {
-        clearTimeout(syncTimeoutId);
-      }
-    };
-  }, [syncTimeoutId]);
 
   const handleZoomChange = (zoomLevel: ZoomLevel) => {
     if (!project) return;
@@ -410,7 +394,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       });
 
       // First sync basic project metadata
-      await debouncedBackendSync(updatedProject, true);
+      await lightweightSync(updatedProject);
 
       // Then sync content in order: Acts -> Characters -> Plot Points -> Scenes
       await syncActs(updatedProject);
@@ -539,8 +523,11 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       for (const character of charactersToCreate) {
         await ProjectApiService.createCharacter(project.id, {
           name: character.name,
-          description: character.appearance, // Map appearance to description
-          characterType: 'other' // Default type, could be enhanced
+          description: character.appearance, // Map appearance to description for backward compatibility
+          appearance: character.appearance,
+          personality: character.personality,
+          motivation: character.motivation,
+          characterType: (character.characterType?.toUpperCase() || 'MINOR') as 'PROTAGONIST' | 'ANTAGONIST' | 'SUPPORTING' | 'MINOR'
         });
       }
 
@@ -548,8 +535,11 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       for (const character of charactersToUpdate) {
         await ProjectApiService.updateCharacter(project.id, character.id, {
           name: character.name,
-          description: character.appearance,
-          characterType: 'other'
+          description: character.appearance, // Map appearance to description for backward compatibility
+          appearance: character.appearance,
+          personality: character.personality,
+          motivation: character.motivation,
+          characterType: (character.characterType?.toUpperCase() || 'MINOR') as 'PROTAGONIST' | 'ANTAGONIST' | 'SUPPORTING' | 'MINOR'
         });
       }
 
@@ -643,25 +633,53 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     try {
       const frontendScenes = plotPoint.scenes || [];
 
+      // First, get current scenes from backend to find ones that need to be deleted
+      let backendScenes: any[] = [];
+      try {
+        backendScenes = await ProjectApiService.getScenes(projectId, plotPointId);
+      } catch (error) {
+        console.warn(`Failed to fetch backend scenes for plot point ${plotPointId}:`, error);
+        backendScenes = [];
+      }
+
+      // Find scenes to delete (exist in backend but not in frontend)
+      const frontendSceneIds = frontendScenes.map((scene: any) => scene.id);
+      const scenesToDelete = backendScenes.filter(backendScene => 
+        !frontendSceneIds.includes(backendScene.id)
+      );
+
+      // Delete removed scenes
+      for (const sceneToDelete of scenesToDelete) {
+        try {
+          await ProjectApiService.deleteScene(projectId, plotPointId, sceneToDelete.id);
+          console.log(`Deleted scene: ${sceneToDelete.title} (ID: ${sceneToDelete.id})`);
+        } catch (error) {
+          console.error(`Failed to delete scene ${sceneToDelete.title}:`, error);
+        }
+      }
+
+      // Then handle creating and updating scenes
       for (const scene of frontendScenes) {
         // Check if this is a temporary ID that needs to be created
         const isTemporary = scene.id.startsWith('temp-') || scene.id.startsWith('scene-');
         
         if (isTemporary) {
           try {
-            // Try to create the scene
-            const plotPoint = project?.plotPoints.find(pp => pp.id === plotPointId);
-            const scenePosition = scene.position || (plotPoint ? 
-              generateScenePosition(plotPoint, plotPoint.scenes, plotPoint.scenes.length) : 
-              { x: 0, y: 0 }
-            );
+            // Try to create the scene - use the scene's current position if it exists
+            const scenePosition = scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number'
+              ? scene.position 
+              : (project?.plotPoints.find(pp => pp.id === plotPointId) ? 
+                  generateScenePosition(project.plotPoints.find(pp => pp.id === plotPointId)!, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes.length) : 
+                  { x: 0, y: 0 }
+                );
             
             const createdScene = await ProjectApiService.createScene(projectId, plotPointId, {
               plotPointId: plotPointId,
               title: scene.title,
               synopsis: scene.synopsis,
               content: scene.synopsis,
-              position: scenePosition
+              position: scenePosition,
+              characterIds: scene.characterIds || []
             });
             console.log(`Created scene: ${scene.title} with ID: ${createdScene.id}`);
           } catch (error) {
@@ -674,24 +692,27 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
               title: scene.title,
               synopsis: scene.synopsis,
               content: scene.synopsis,
-              position: scene.position
+              position: scene.position,
+              characterIds: scene.characterIds || []
             });
             console.log(`Updated scene: ${scene.title}`);
           } catch (error) {
             // If update fails, try to create it
             try {
-              const plotPoint = project?.plotPoints.find(pp => pp.id === plotPointId);
-              const scenePosition = scene.position || (plotPoint ? 
-                generateScenePosition(plotPoint, plotPoint.scenes, plotPoint.scenes.length) : 
-                { x: 0, y: 0 }
-              );
+              const scenePosition = scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number'
+                ? scene.position 
+                : (project?.plotPoints.find(pp => pp.id === plotPointId) ? 
+                    generateScenePosition(project.plotPoints.find(pp => pp.id === plotPointId)!, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes.length) : 
+                    { x: 0, y: 0 }
+                  );
               
               const createdScene = await ProjectApiService.createScene(projectId, plotPointId, {
                 plotPointId: plotPointId,
                 title: scene.title,
                 synopsis: scene.synopsis,
                 content: scene.synopsis,
-                position: scenePosition
+                position: scenePosition,
+                characterIds: scene.characterIds || []
               });
               console.log(`Created scene (after update failed): ${scene.title} with ID: ${createdScene.id}`);
             } catch (createError) {
@@ -705,6 +726,94 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       throw error;
     }
   };
+
+  // Optimized autosave system
+  const [lastSavedProject, setLastSavedProject] = useState<Project | null>(null);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [autoSaveTimeoutId, setAutoSaveTimeoutId] = useState<NodeJS.Timeout | null>(null);
+  const [lastAutoSave, setLastAutoSave] = useState<Date | null>(null);
+
+  // Constants for autosave optimization
+  const AUTOSAVE_DELAY = 3000; // 3 seconds after last change
+  const AUTOSAVE_MAX_INTERVAL = 30000; // Force save every 30 seconds if changes exist
+  const LIGHTWEIGHT_SYNC_DELAY = 1000; // 1 second for lightweight changes (zoom, pan)
+
+  // Detect changes between projects
+  const detectChanges = (oldProject: Project | null, newProject: Project): 'none' | 'lightweight' | 'content' => {
+    if (!oldProject) return 'content';
+
+    // Check for lightweight changes (UI state only)
+    const lightweightChanges = [
+      'currentZoomLevel',
+      'focusedElementId',
+      'currentActId'
+    ];
+    
+    const hasLightweightChanges = lightweightChanges.some(
+      key => (oldProject as any)[key] !== (newProject as any)[key]
+    );
+
+    // Check for content changes (data that needs backend sync)
+    const contentChanges = [
+      'title',
+      'description', 
+      'tags',
+      'status',
+      'acts',
+      'characters',
+      'plotPoints'
+    ];
+
+    const hasContentChanges = contentChanges.some(key => {
+      const oldValue = (oldProject as any)[key];
+      const newValue = (newProject as any)[key];
+      return JSON.stringify(oldValue) !== JSON.stringify(newValue);
+    });
+
+    if (hasContentChanges) return 'content';
+    if (hasLightweightChanges) return 'lightweight';
+    return 'none';
+  };
+
+  // Optimized autosave function
+  const performAutoSave = async (project: Project, changeType: 'lightweight' | 'content') => {
+    try {
+      setIsSyncing(true);
+      
+      if (changeType === 'lightweight') {
+        // Only sync UI state changes (fast)
+        await lightweightSync(project);
+      } else {
+        // Sync all content changes (slower)
+        await syncProjectContent(project);
+      }
+
+      setLastSavedProject({ ...project });
+      setHasUnsavedChanges(false);
+      setLastAutoSave(new Date());
+      
+      console.log(`Auto-saved (${changeType}) at`, new Date().toLocaleTimeString());
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      // Don't clear unsaved changes flag on failure
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Force autosave after maximum interval if changes exist
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+
+    const forceAutoSaveTimeout = setTimeout(() => {
+      if (project && hasUnsavedChanges) {
+        console.log('Force auto-save triggered after max interval');
+        performAutoSave(project, 'content');
+      }
+    }, AUTOSAVE_MAX_INTERVAL);
+
+    return () => clearTimeout(forceAutoSaveTimeout);
+  }, [hasUnsavedChanges, project]);
 
   if (isLoading) {
     return (
@@ -766,6 +875,32 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
           <span>{project.acts.length} acts</span>
           <span>{project.plotPoints.length} plot points</span>
           <span>{project.characters.length} characters</span>
+          
+          {/* Autosave Status Indicator */}
+          <div className="flex items-center gap-2">
+            {isSyncing ? (
+              <div className="flex items-center gap-1 text-blue-600">
+                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                <span className="text-xs">Saving...</span>
+              </div>
+            ) : hasUnsavedChanges ? (
+              <div className="flex items-center gap-1 text-amber-600">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs">Unsaved</span>
+              </div>
+            ) : lastAutoSave ? (
+              <div className="flex items-center gap-1 text-green-600">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs">Saved {lastAutoSave.toLocaleTimeString()}</span>
+              </div>
+            ) : null}
+          </div>
         </div>
         
         {/* User Menu */}
@@ -836,7 +971,6 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
           project={project}
           onProjectUpdate={handleProjectUpdate}
           ref={canvasRef}
-          onZoomToFit={handleZoomToFit}
         />
       </div>
     </div>

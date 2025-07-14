@@ -12,6 +12,17 @@ import {
   AuthorizationError 
 } from '../lib/errors';
 import { authenticateToken, AuthenticatedRequest } from '../lib/middleware';
+import { CharacterType } from '@prisma/client';
+
+// Helper function to convert character type to uppercase
+function normalizeCharacterType(characterType?: string): CharacterType | undefined {
+  if (!characterType) return undefined;
+  const upperType = characterType.toUpperCase() as CharacterType;
+  if (['PROTAGONIST', 'ANTAGONIST', 'SUPPORTING', 'MINOR'].includes(upperType)) {
+    return upperType;
+  }
+  return 'MINOR' as CharacterType; // Default fallback
+}
 
 const router = express.Router();
 
@@ -141,6 +152,11 @@ router.post('/:projectId/characters', async (req: AuthenticatedRequest, res, nex
     const { projectId } = validateRequest(projectIdParamSchema, req.params);
     const characterData = validateRequest(createCharacterSchema, req.body);
 
+    // Normalize character type to uppercase
+    if (characterData.characterType) {
+      characterData.characterType = normalizeCharacterType(characterData.characterType);
+    }
+
     // Check user has edit access to project
     const project = await db.project.findFirst({
       where: {
@@ -160,6 +176,7 @@ router.post('/:projectId/characters', async (req: AuthenticatedRequest, res, nex
       data: {
         ...characterData,
         projectId,
+        characterType: characterData.characterType || 'MINOR' // Ensure we have a valid enum value
       },
       include: {
         _count: {
@@ -189,6 +206,11 @@ router.patch('/:projectId/characters/:characterId', async (req: AuthenticatedReq
     );
     const updateData = validateRequest(updateCharacterSchema, req.body);
 
+    // Normalize character type to uppercase
+    if (updateData.characterType) {
+      updateData.characterType = normalizeCharacterType(updateData.characterType);
+    }
+
     // Check user has edit access
     const project = await db.project.findFirst({
       where: {
@@ -204,12 +226,96 @@ router.patch('/:projectId/characters/:characterId', async (req: AuthenticatedReq
       throw new NotFoundError('Project not found or insufficient permissions');
     }
 
+    // Create clean update data with proper types
+    const cleanUpdateData: any = {};
+    if (updateData.name !== undefined) cleanUpdateData.name = updateData.name;
+    if (updateData.description !== undefined) cleanUpdateData.description = updateData.description;
+    if (updateData.appearance !== undefined) cleanUpdateData.appearance = updateData.appearance;
+    if (updateData.personality !== undefined) cleanUpdateData.personality = updateData.personality;
+    if (updateData.motivation !== undefined) cleanUpdateData.motivation = updateData.motivation;
+    if (updateData.backstory !== undefined) cleanUpdateData.backstory = updateData.backstory;
+    if (updateData.characterType !== undefined) cleanUpdateData.characterType = updateData.characterType;
+    if (updateData.arcNotes !== undefined) cleanUpdateData.arcNotes = updateData.arcNotes;
+
     const character = await db.character.update({
       where: { 
         id: characterId,
         projectId
       },
-      data: updateData,
+      data: cleanUpdateData,
+      include: {
+        _count: {
+          select: {
+            scenes: true
+          }
+        }
+      }
+    });
+
+    res.json({ character });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PUT endpoint (alias for PATCH to support frontend compatibility)
+router.put('/:projectId/characters/:characterId', async (req: AuthenticatedRequest, res, next) => {
+  try {
+    if (!req.userId) {
+      throw new AuthorizationError('User not authenticated');
+    }
+
+    const { projectId, characterId } = validateRequest(
+      projectIdParamSchema.merge(characterIdParamSchema), 
+      req.params
+    );
+    const updateData = validateRequest(updateCharacterSchema, req.body);
+
+    // Normalize character type to uppercase
+    if (updateData.characterType) {
+      updateData.characterType = normalizeCharacterType(updateData.characterType);
+    }
+
+    // Check user has edit access
+    const project = await db.project.findFirst({
+      where: {
+        id: projectId,
+        OR: [
+          { userId: req.userId },
+          {
+            collaborators: {
+              some: {
+                userId: req.userId,
+                role: { in: ['EDITOR', 'OWNER'] }
+              }
+            }
+          }
+        ]
+      }
+    });
+
+    if (!project) {
+      throw new AuthorizationError('Project not found or insufficient permissions');
+    }
+
+    // Create clean update data with proper types
+    const cleanUpdateData: any = {};
+    if (updateData.name !== undefined) cleanUpdateData.name = updateData.name;
+    if (updateData.description !== undefined) cleanUpdateData.description = updateData.description;
+    if (updateData.appearance !== undefined) cleanUpdateData.appearance = updateData.appearance;
+    if (updateData.personality !== undefined) cleanUpdateData.personality = updateData.personality;
+    if (updateData.motivation !== undefined) cleanUpdateData.motivation = updateData.motivation;
+    if (updateData.backstory !== undefined) cleanUpdateData.backstory = updateData.backstory;
+    if (updateData.characterType !== undefined) cleanUpdateData.characterType = updateData.characterType;
+    if (updateData.arcNotes !== undefined) cleanUpdateData.arcNotes = updateData.arcNotes;
+
+    // Update character
+    const character = await db.character.update({
+      where: { 
+        id: characterId,
+        projectId: projectId
+      },
+      data: cleanUpdateData,
       include: {
         _count: {
           select: {
