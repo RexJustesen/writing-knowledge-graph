@@ -1,3 +1,45 @@
+// Plot Point Categories for Sprint 2
+export enum PlotPointCategory {
+  ACTION = 'action',           // ⚔️ Red
+  CHARACTER = 'character',     // 👤 Blue  
+  WORLDBUILDING = 'world',     // 🌍 Green
+  CONFLICT = 'conflict',       // ⚡ Orange
+  RESOLUTION = 'resolution',   // ✅ Purple
+  TWIST = 'twist',            // 🔄 Yellow
+  ROMANCE = 'romance',        // ❤️ Pink
+  MYSTERY = 'mystery'         // 🔍 Dark Blue
+}
+
+// Event Types for structural story elements - tracks what story beats are covered
+export enum EventType {
+  // Universal Story Beats
+  INCITING_INCIDENT = 'inciting_incident',
+  CATALYST = 'catalyst',
+  PLOT_POINT_1 = 'plot_point_1',
+  MIDPOINT_REVELATION = 'midpoint_revelation',
+  PLOT_POINT_2 = 'plot_point_2',
+  CLIMAX = 'climax',
+  RESOLUTION = 'resolution',
+  DARK_MOMENT = 'dark_moment',
+  BREAKTHROUGH = 'breakthrough',
+  FINAL_CONFRONTATION = 'final_confrontation',
+  
+  // Romance Specific
+  MEET_CUTE = 'meet_cute',
+  FALLING_IN_LOVE = 'falling_in_love',
+  RELATIONSHIP_DEEPENS = 'relationship_deepens',
+  MAJOR_CONFLICT = 'major_conflict',
+  GRAND_GESTURE = 'grand_gesture',
+  HAPPY_ENDING = 'happy_ending',
+  
+  // Mystery/Thriller Specific
+  CRIME_DISCOVERY = 'crime_discovery',
+  INVESTIGATION_BEGINS = 'investigation_begins',
+  FALSE_LEAD = 'false_lead',
+  KEY_REVELATION = 'key_revelation',
+  UNMASKING = 'unmasking'
+}
+
 // Data models based on PRD Section 5.5 - Development Architecture
 export interface PlotPoint {
   id: string;
@@ -6,6 +48,12 @@ export interface PlotPoint {
   color: string;
   actId: string; // Changed from act number to act ID for flexibility
   scenes: Scene[];
+  // Sprint 2 additions
+  category?: PlotPointCategory;
+  description?: string;
+  guidance?: string; // Template guidance text
+  templateId?: string; // If created from template
+  eventType?: EventType; // Structural story element type for suggestion system
 }
 
 export interface Scene {
@@ -81,6 +129,89 @@ export interface Project {
   plotPoints: PlotPoint[];
   currentZoomLevel: ZoomLevel;
   focusedElementId?: string; // ID of currently focused plot point or scene
+  // Sprint 2 additions
+  genre?: string; // Detected or user-selected genre
+  templateId?: string; // If created from template
+}
+
+// Sprint 2: Template System
+export interface PlotPointTemplate {
+  id: string;
+  name: string;
+  description: string;
+  guidance: string;
+  actId: string;
+  order: number;
+  genre: string[];
+  optional: boolean;
+  category: PlotPointCategory;
+  defaultTitle: string;
+}
+
+export interface StoryTemplate {
+  id: string;
+  name: string;
+  genre: string;
+  description: string;
+  plotPoints: PlotPointTemplate[];
+  actStructure: number; // 3, 4, or 5 acts
+}
+
+export interface QuickTemplate {
+  id: string;
+  name: string;
+  category: PlotPointCategory;
+  defaultTitle: string;
+  descriptionTemplate: string;
+  suggestedFields: string[];
+}
+
+// Sprint 2: Story Analysis & Suggestions
+export interface PlotPointSuggestion {
+  id: string;
+  title: string;
+  description: string;
+  reasoning: string;
+  suggestedActId: string;
+  confidence: number; // 0-1 score
+  templateSource?: string;
+  templateId?: string; // ID to look up in DetailedTemplateService
+  guidance?: string; // Optional guidance text
+  category: PlotPointCategory;
+  eventType?: EventType; // Structural story element this suggestion represents
+  sceneTemplates?: SceneTemplate[]; // Scenes to create with this plot point
+  requiredCharacters?: string[]; // Character types that should exist
+}
+
+export interface SceneTemplate {
+  title: string;
+  synopsis: string;
+  content?: string;
+  sceneOrder: number;
+  position?: { x: number; y: number };
+}
+
+// Sprint 2: Story Structure Validation
+export interface StructureValidation {
+  score: number; // 0-100
+  warnings: ValidationWarning[];
+  suggestions: ValidationSuggestion[];
+  strengths: string[];
+}
+
+export interface ValidationWarning {
+  type: 'missing_element' | 'pacing_issue' | 'genre_mismatch' | 'overcrowded_act';
+  message: string;
+  suggestion: string;
+  actId?: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface ValidationSuggestion {
+  id: string;
+  message: string;
+  action: string;
+  templateId?: string;
 }
 
 // Project metadata for homepage display

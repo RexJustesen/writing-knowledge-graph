@@ -156,6 +156,7 @@ model PlotPoint {
   position    Json     // { x: number, y: number }
   color       String   @default("#3b82f6")
   order       Int?
+  eventType   String?  // EventType enum value for structural story elements
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   

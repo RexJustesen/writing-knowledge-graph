@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { PlotPoint, Scene, Character, Setting, Item, Project } from '@/types/story';
+import { PlotPoint, Scene, Character, Setting, Item, Project, PlotPointCategory, EventType } from '@/types/story';
 import { ProjectApiService } from '@/services/projectApiService';
+import { TemplateService } from '@/services/templateService';
 
 interface PropertyPanelProps {
   selectedNode: any | null;
@@ -64,6 +65,14 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
         // For permanent nodes, get fresh data from project to reflect any deletions
         const currentPlotPoint = project.plotPoints.find(pp => pp.id === nodeId);
         if (currentPlotPoint) {
+          console.log('🔍 PropertyPanel: Loading plot point data:', {
+            nodeId,
+            plotPointTitle: currentPlotPoint.title,
+            eventType: currentPlotPoint.eventType,
+            hasEventType: 'eventType' in currentPlotPoint,
+            plotPointKeys: Object.keys(currentPlotPoint),
+            fullPlotPoint: currentPlotPoint
+          });
           setFormData({ ...currentPlotPoint });
           setCurrentScenes(currentPlotPoint.scenes || []);
         } else {
@@ -397,6 +406,14 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
   };
 
   const handleSave = () => {
+    console.log('💾 PropertyPanel handleSave called with formData:', {
+      id: formData.id,
+      title: formData.title,
+      eventType: formData.eventType,
+      hasEventType: 'eventType' in formData,
+      fullFormData: formData
+    });
+
     const updatedProject = { ...project };
     // Get node ID using proper Cytoscape element method
     const nodeId = typeof actualNode.id === 'function' ? actualNode.id() : 
@@ -420,11 +437,30 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
         const plotPointIndex = updatedProject.plotPoints.findIndex(pp => pp.id === nodeId);
         if (plotPointIndex !== -1) {
           const currentPlotPoint = updatedProject.plotPoints[plotPointIndex];
-          updatedProject.plotPoints[plotPointIndex] = { 
+          
+          console.log('💾 PropertyPanel: Before updating plot point:', {
+            nodeId,
+            formDataKeys: Object.keys(formData),
+            formDataEventType: formData.eventType,
+            currentPlotPointEventType: currentPlotPoint.eventType,
+            formDataHasEventType: 'eventType' in formData
+          });
+          
+          const updatedPlotPoint = { 
             ...currentPlotPoint, // Preserve existing data
             ...formData, // Apply form updates (title, color, act, etc.)
             scenes: currentScenes // Use local scenes state which includes deletions
           };
+          
+          console.log('💾 PropertyPanel: After creating updated plot point:', {
+            nodeId,
+            oldEventType: currentPlotPoint.eventType,
+            newEventType: formData.eventType,
+            updatedPlotPointEventType: updatedPlotPoint.eventType,
+            updatedPlotPointKeys: Object.keys(updatedPlotPoint)
+          });
+          
+          updatedProject.plotPoints[plotPointIndex] = updatedPlotPoint;
         }
       }
     } else {
@@ -483,6 +519,11 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     }
     
     updatedProject.lastModified = new Date();
+    console.log('💾 PropertyPanel: Calling onProjectUpdate with project:', {
+      plotPointsCount: updatedProject.plotPoints.length,
+      immediate: true,
+      firstPlotPointWithEventType: updatedProject.plotPoints.find(pp => pp.eventType)
+    });
     onProjectUpdate(updatedProject, true); // Use immediate=true for PropertyPanel changes
     onClose();
   };
@@ -521,6 +562,107 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
             }
           </select>
         </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-900 mb-1">Category</label>
+          <select
+            value={formData.category || PlotPointCategory.CHARACTER}
+            onChange={(e) => {
+              const category = e.target.value as PlotPointCategory;
+              handleInputChange('category', category);
+              // Update color to match category
+              const categoryConfig = TemplateService.getCategoryConfig(category);
+              handleInputChange('color', categoryConfig.color);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+          >
+            {Object.values(PlotPointCategory).map(category => {
+              const config = TemplateService.getCategoryConfig(category);
+              return (
+                <option key={category} value={category}>
+                  {config.icon} {category.charAt(0).toUpperCase() + category.slice(1)}
+                </option>
+              );
+            })}
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-900 mb-1">
+            Event Type 
+            <span className="text-gray-500 text-xs ml-1">(Story Structure Element)</span>
+          </label>
+          <select
+            value={formData.eventType || ''}
+            onChange={(e) => {
+              const eventType = e.target.value || undefined;
+              console.log('🔄 PropertyPanel: Event Type changed:', {
+                from: formData.eventType,
+                to: eventType,
+                plotPointTitle: formData.title
+              });
+              handleInputChange('eventType', eventType);
+            }}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+          >
+            <option value="">None (Custom Plot Point)</option>
+            
+            <optgroup label="Universal Story Beats">
+              <option value={EventType.INCITING_INCIDENT}>📍 Inciting Incident</option>
+              <option value={EventType.CATALYST}>⚡ Catalyst</option>
+              <option value={EventType.PLOT_POINT_1}>🚪 Plot Point 1 (Call to Adventure)</option>
+              <option value={EventType.MIDPOINT_REVELATION}>🔄 Midpoint Revelation</option>
+              <option value={EventType.PLOT_POINT_2}>🌑 Plot Point 2 (All Is Lost)</option>
+              <option value={EventType.DARK_MOMENT}>😰 Dark Moment</option>
+              <option value={EventType.BREAKTHROUGH}>💡 Breakthrough</option>
+              <option value={EventType.CLIMAX}>🎯 Climax</option>
+              <option value={EventType.FINAL_CONFRONTATION}>⚔️ Final Confrontation</option>
+              <option value={EventType.RESOLUTION}>✅ Resolution</option>
+            </optgroup>
+            
+            <optgroup label="Romance Story Beats">
+              <option value={EventType.MEET_CUTE}>💕 Meet Cute</option>
+              <option value={EventType.FALLING_IN_LOVE}>😍 Falling in Love</option>
+              <option value={EventType.RELATIONSHIP_DEEPENS}>💖 Relationship Deepens</option>
+              <option value={EventType.MAJOR_CONFLICT}>💔 Major Conflict</option>
+              <option value={EventType.GRAND_GESTURE}>🌹 Grand Gesture</option>
+              <option value={EventType.HAPPY_ENDING}>👰 Happy Ending</option>
+            </optgroup>
+            
+            <optgroup label="Mystery/Thriller Beats">
+              <option value={EventType.CRIME_DISCOVERY}>🔍 Crime Discovery</option>
+              <option value={EventType.INVESTIGATION_BEGINS}>🕵️ Investigation Begins</option>
+              <option value={EventType.FALSE_LEAD}>🚫 False Lead (Red Herring)</option>
+              <option value={EventType.KEY_REVELATION}>🔑 Key Revelation</option>
+              <option value={EventType.UNMASKING}>🎭 Unmasking</option>
+            </optgroup>
+          </select>
+          <p className="text-xs text-gray-500 mt-1">
+            Event Types help the AI understand your story structure and provide better suggestions.
+          </p>
+        </div>
+
+        {formData.description !== undefined && (
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-1">Description</label>
+            <textarea
+              value={formData.description || ''}
+              onChange={(e) => handleInputChange('description', e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-transparent text-gray-900"
+              placeholder="Plot point description"
+              rows={3}
+            />
+          </div>
+        )}
+
+        {formData.guidance && (
+          <div>
+            <label className="block text-sm font-medium text-gray-900 mb-1">Template Guidance</label>
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
+              <p className="text-sm text-blue-800">💡 {formData.guidance}</p>
+            </div>
+          </div>
+        )}
         
         <div>
           <label className="block text-sm font-medium text-gray-900 mb-1">Color</label>

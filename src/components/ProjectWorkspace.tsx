@@ -8,59 +8,75 @@ import ActNavigation from './ActNavigation';
 import GlobalSearchBar from './GlobalSearchBar';
 import QuickNavPalette from './QuickNavPalette';
 import RecentItemsSidebar from './RecentItemsSidebar';
+import PlotPointSuggestions from './PlotPointSuggestions';
+import StoryValidationPanel from './StoryValidationPanel';
 import { Project as BackendProject, ProjectApiService } from '@/services/projectApiService';
-import { Project, ZoomLevel, Scene } from '../types/story';
+import { Project, ZoomLevel, Scene, PlotPointSuggestion, PlotPoint, PlotPointCategory, EventType } from '../types/story';
 import { useAuth } from '@/contexts/AuthContext';
 import { SearchProvider, useSearch } from '@/contexts/SearchContext';
 import { SearchResult } from '@/services/searchService';
 import { NavigationService, RecentItem } from '@/services/navigationService';
+import { TemplateService } from '@/services/templateService';
+import { StoryAnalysisService } from '@/services/storyAnalysisService';
+import { DetailedTemplateService } from '@/services/detailedTemplateService';
+
+// Helper function to convert string to EventType enum
+const convertStringToEventType = (eventTypeStr?: string): EventType | undefined => {
+  if (!eventTypeStr) return undefined;
+  
+  // Check if the string matches any EventType enum value
+  const eventTypeValues = Object.values(EventType) as string[];
+  if (eventTypeValues.includes(eventTypeStr)) {
+    return eventTypeStr as EventType;
+  }
+  
+  // If not found, return undefined (invalid eventType from backend)
+  console.warn('Unknown eventType from backend:', eventTypeStr);
+  return undefined;
+};
 
 // Helper function to generate a unique position for new plot points
 const generateUniquePosition = (existingPlotPoints: any[]): { x: number; y: number } => {
-  const GRID_SIZE = 200; // Distance between plot points
-  const START_X = 100;
-  const START_Y = 100;
-  const MAX_COLS = 5; // Maximum columns before starting a new row
+  const MIN_DISTANCE = 150; // Minimum distance between plot points
+  const SEARCH_RADIUS = 250; // How far to search around existing nodes
   
   // Get all existing positions
   const existingPositions = existingPlotPoints
     .map(pp => pp.position)
     .filter(pos => pos && typeof pos.x === 'number' && typeof pos.y === 'number');
   
-  // Find a position that doesn't conflict with existing ones
-  let row = 0;
-  let col = 0;
+  // If no existing plot points, use a sensible default
+  if (existingPositions.length === 0) {
+    return { x: 300, y: 300 };
+  }
   
-  while (true) {
-    const x = START_X + (col * GRID_SIZE);
-    const y = START_Y + (row * GRID_SIZE);
-    
-    // Check if this position is too close to any existing position
-    const hasConflict = existingPositions.some(pos => {
-      const distance = Math.sqrt(Math.pow(pos.x - x, 2) + Math.pow(pos.y - y, 2));
-      return distance < GRID_SIZE * 0.8; // Allow some tolerance
-    });
-    
-    if (!hasConflict) {
-      return { x, y };
-    }
-    
-    // Move to next position in grid
-    col++;
-    if (col >= MAX_COLS) {
-      col = 0;
-      row++;
-    }
-    
-    // Safety check to prevent infinite loop
-    if (row > 20) {
-      // Fallback to random position
-      return {
-        x: START_X + Math.random() * 500,
-        y: START_Y + Math.random() * 500
-      };
+  // Find the center of mass of existing plot points
+  const centerX = existingPositions.reduce((sum, pos) => sum + pos.x, 0) / existingPositions.length;
+  const centerY = existingPositions.reduce((sum, pos) => sum + pos.y, 0) / existingPositions.length;
+  
+  // Try positions in expanding circles around the center of mass
+  for (let radius = MIN_DISTANCE; radius <= SEARCH_RADIUS; radius += 50) {
+    for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
+      const x = centerX + radius * Math.cos(angle);
+      const y = centerY + radius * Math.sin(angle);
+      
+      // Check if this position is too close to any existing position
+      const hasConflict = existingPositions.some(pos => {
+        const distance = Math.sqrt(Math.pow(pos.x - x, 2) + Math.pow(pos.y - y, 2));
+        return distance < MIN_DISTANCE;
+      });
+      
+      if (!hasConflict) {
+        return { x: Math.round(x), y: Math.round(y) };
+      }
     }
   }
+  
+  // Fallback: place it near the center with some randomness
+  return {
+    x: Math.round(centerX + (Math.random() - 0.5) * 300),
+    y: Math.round(centerY + (Math.random() - 0.5) * 300)
+  };
 };
 
 // Helper function to generate unique scene position around a plot point
@@ -190,6 +206,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
                 position: plotPoint.position || { x: 0, y: 0 }, // Use actual position from backend
                 color: plotPoint.color || '#3b82f6', // Use actual color from backend
                 actId: plotPoint.actId,
+                eventType: convertStringToEventType(plotPoint.eventType), // Convert string to EventType enum
                 scenes: frontendScenes
               });
             } catch (sceneError) {
@@ -201,6 +218,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
                 position: plotPoint.position || { x: 0, y: 0 },
                 color: plotPoint.color || '#3b82f6',
                 actId: plotPoint.actId,
+                eventType: convertStringToEventType(plotPoint.eventType), // Convert string to EventType enum
                 scenes: []
               });
             }
@@ -739,6 +757,131 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     }
   };
 
+  // Sprint 2: Handle accepting plot point suggestions
+  const handleSuggestionAccept = (suggestion: PlotPointSuggestion) => {
+    if (!project) return;
+    
+    console.log('Accepting suggestion:', suggestion);
+    
+    // Map template act ID to real project act ID
+    let realActId = suggestion.suggestedActId;
+    
+    // Handle template act ID mapping to real act IDs
+    if (suggestion.suggestedActId.startsWith('act-')) {
+      // Extract the act number from template ID (e.g., 'act-2' -> 2)
+      const actNumber = parseInt(suggestion.suggestedActId.split('-')[1]);
+      // Find the real act with the corresponding order
+      const targetAct = project.acts.find(act => act.order === actNumber);
+      if (targetAct) {
+        realActId = targetAct.id;
+        console.log(`Mapped template act ID ${suggestion.suggestedActId} to real act ID ${realActId}`);
+      } else {
+        console.warn(`Could not find act with order ${actNumber} for suggestion ${suggestion.title}`);
+        return; // Don't create the plot point if we can't find the act
+      }
+    }
+
+    // Get detailed template data for scenes and characters
+    const plotPointTemplate = DetailedTemplateService.getPlotPointTemplateById(suggestion.templateId || '', suggestion.title);
+    
+    // Create scenes from template if available
+    const newScenes: Scene[] = [];
+    if (plotPointTemplate?.scenes) {
+      plotPointTemplate.scenes.forEach((sceneTemplate, index) => {
+        const newScene: Scene = {
+          id: `scene-${Date.now()}-${index}`,
+          title: sceneTemplate.title,
+          synopsis: sceneTemplate.synopsis,
+          characterIds: [], // Will be populated if characters are referenced
+          setting: { id: `setting-${Date.now()}-${index}`, name: 'Default Setting', description: '' },
+          items: [],
+          position: sceneTemplate.position || { x: 100 + (index * 150), y: 100 }
+        };
+        newScenes.push(newScene);
+      });
+    }
+
+    // Create a new plot point from the suggestion
+    const newPlotPoint: PlotPoint = {
+      id: `plot-${Date.now()}`,
+      title: suggestion.title,
+      description: suggestion.description,
+      guidance: suggestion.guidance || `Suggested: ${suggestion.reasoning}`,
+      position: generateUniquePosition(project.plotPoints.filter(pp => pp.actId === realActId)),
+      color: TemplateService.getCategoryConfig(suggestion.category).color,
+      actId: realActId, // Use the real act ID
+      scenes: newScenes, // Scenes are already correctly typed
+      category: suggestion.category,
+      eventType: suggestion.eventType // Track structural story element
+    };
+
+    // Create new characters from template if available and not already existing
+    let newCharacters = project.characters;
+    if (plotPointTemplate?.characterRequirements) {
+      plotPointTemplate.characterRequirements.forEach(charTemplate => {
+        // Check if character already exists (by name)
+        const existingChar = project.characters.find(c => 
+          c.name.toLowerCase() === charTemplate.name.toLowerCase()
+        );
+        
+        if (!existingChar) {
+          const newCharacter = {
+            id: `char-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            name: charTemplate.name,
+            appearance: charTemplate.appearance,
+            personality: charTemplate.personality,
+            motivation: charTemplate.motivation,
+            characterType: charTemplate.characterType
+          };
+          newCharacters = [...newCharacters, newCharacter];
+          console.log(`Created new character: ${charTemplate.name}`);
+        } else {
+          console.log(`Character ${charTemplate.name} already exists, skipping creation`);
+        }
+      });
+    }
+
+    // Add to the project
+    const updatedProject: Project = {
+      ...project,
+      plotPoints: [...project.plotPoints, newPlotPoint],
+      characters: newCharacters,
+      currentActId: realActId, // Navigate to the act where the plot point was created
+      focusedElementId: newPlotPoint.id, // Focus on the newly created plot point
+      lastModified: new Date()
+    };
+
+    console.log(`Created plot point "${newPlotPoint.title}" with ${newScenes.length} scenes and ${newCharacters.length - project.characters.length} new characters`);
+    console.log(`Navigating to act ${realActId} and focusing on plot point ${newPlotPoint.id}`);
+
+    // Update the project immediately with the new plot point and focus
+    handleProjectUpdate(updatedProject);
+    
+    // Force a re-render by triggering a state update after the canvas has had time to render
+    setTimeout(() => {
+      // Just trigger a minimal update to ensure all UI components reflect the new state
+      const refreshedProject = {
+        ...updatedProject,
+        lastModified: new Date() // Small change to trigger re-render
+      };
+      console.log(`🔄 Refreshing UI state to ensure act count updates`);
+      handleProjectUpdate(refreshedProject);
+      
+      // Clear the focused state after UI has updated
+      setTimeout(() => {
+        const clearedFocusProject = {
+          ...refreshedProject,
+          focusedElementId: undefined,
+          lastModified: new Date()
+        };
+        handleProjectUpdate(clearedFocusProject);
+      }, 100);
+    }, 300); // Give enough time for the initial render and canvas selection
+    
+    // Track the addition - using existing NavigationService methods
+    NavigationService.trackProjectAccess(project.id, project.title);
+  };
+
   // Content sync functionality - handles syncing of acts, plot points, scenes, and characters
   const syncProjectContent = async (updatedProject: Project) => {
     if (!updatedProject.id) return;
@@ -772,7 +915,8 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         const refreshedProject = await convertBackendProject(backendProject);
         console.log('✅ ProjectWorkspace: Project refreshed with real IDs', {
           plotPointsCount: refreshedProject.plotPoints.length,
-          plotPointIds: refreshedProject.plotPoints.map((pp: any) => ({ id: pp.id, title: pp.title }))
+          plotPointIds: refreshedProject.plotPoints.map((pp: any) => ({ id: pp.id, title: pp.title, eventType: pp.eventType, hasEventType: 'eventType' in pp })),
+          firstPlotPointWithEventType: refreshedProject.plotPoints.find((pp: any) => pp.eventType)
         });
         setProject(refreshedProject);
         setLastSavedProject({ ...refreshedProject });
@@ -953,7 +1097,8 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
               actId: plotPoint.actId,
               title: plotPoint.title,
               position: plotPoint.position || generateUniquePosition(project.plotPoints),
-              color: plotPoint.color
+              color: plotPoint.color,
+              eventType: plotPoint.eventType // Include eventType in creation
             });
             
             if (createdPlotPoint && createdPlotPoint.id) {
@@ -970,15 +1115,26 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         } else {
           // Try to update existing plot point
           try {
-            await ProjectApiService.updatePlotPoint(project.id, plotPoint.actId, plotPoint.id, {
+            const updateData = {
               title: plotPoint.title,
               position: plotPoint.position ? {
                 x: plotPoint.position.x,
                 y: plotPoint.position.y
               } : undefined,
               color: plotPoint.color,
-              actId: plotPoint.actId // Include actId in the update
+              actId: plotPoint.actId, // Include actId in the update
+              eventType: plotPoint.eventType // Include eventType in update
+            };
+            
+            console.log('🚀 ProjectWorkspace: Sending plot point update to API:', {
+              plotPointId: plotPoint.id,
+              plotPointTitle: plotPoint.title,
+              hasEventType: !!plotPoint.eventType,
+              eventTypeValue: plotPoint.eventType,
+              updateData
             });
+            
+            await ProjectApiService.updatePlotPoint(project.id, plotPoint.actId, plotPoint.id, updateData);
             console.log(`Updated plot point: ${plotPoint.title}`);
           } catch (error) {
             // If update fails, try to create it
@@ -1389,12 +1545,25 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       </div>
       
       {/* Main Canvas Area */}
-      <div className="flex-1 overflow-hidden">
+      <div className="flex-1 overflow-hidden flex">
         <Canvas 
           project={project}
           onProjectUpdate={handleProjectUpdate}
           ref={canvasRef}
         />
+        
+        {/* Sprint 2: Right Sidebar with Suggestions and Validation */}
+        <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto p-4 space-y-4">
+          <PlotPointSuggestions
+            project={project}
+            currentActId={project.currentActId}
+            onSuggestionAccept={handleSuggestionAccept}
+          />
+          
+          <StoryValidationPanel
+            project={project}
+          />
+        </div>
       </div>
       </div>
       

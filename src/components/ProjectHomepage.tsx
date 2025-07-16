@@ -7,9 +7,12 @@ import { useAuth } from '@/contexts/AuthContext';
 import { socketService } from '@/services/socketService';
 import GlobalSearchBar from './GlobalSearchBar';
 import QuickNavPalette from './QuickNavPalette';
+import TemplateSelector from './TemplateSelector';
 import { SearchProvider, useSearch } from '@/contexts/SearchContext';
 import { SearchResult } from '@/services/searchService';
 import { NavigationService } from '@/services/navigationService';
+import { StoryTemplate } from '@/types/story';
+import { TemplateService } from '@/services/templateService';
 
 interface ProjectHomepageProps {
   onProjectSelect: (projectId: string) => void;
@@ -130,16 +133,26 @@ const ProjectHomepageContent: React.FC<ProjectHomepageProps> = ({ onProjectSelec
     setFilteredProjects(filtered);
   };
 
-  const handleCreateProject = async (title: string, template?: 'novel' | 'screenplay' | 'short-story' | 'from-scratch') => {
+  const handleCreateProject = async (title: string, template?: StoryTemplate | null, description?: string) => {
     try {
-      const newProject = await ProjectApiService.createProject({ 
-        title,
-        description: '',
-        template: template === 'from-scratch' ? 'FROM_SCRATCH' : 
-                 template === 'novel' ? 'NOVEL' :
-                 template === 'screenplay' ? 'SCREENPLAY' :
-                 template === 'short-story' ? 'SHORT_STORY' : undefined
-      });
+      let newProject;
+      
+      if (template) {
+        // Create project from template - pass the template ID to backend
+        newProject = await ProjectApiService.createProject({ 
+          title,
+          description,
+          template: template.id as any // Use the Sprint 2 template ID
+        });
+      } else {
+        // Create blank project
+        newProject = await ProjectApiService.createProject({ 
+          title,
+          description: description || '',
+          template: 'FROM_SCRATCH'
+        });
+      }
+      
       setShowNewProjectDialog(false);
       loadProjects(); // Refresh the project list to show the new project
     } catch (error) {
@@ -501,30 +514,31 @@ const ProjectCard: React.FC<ProjectCardProps> = ({
 
 // New Project Dialog Component
 interface NewProjectDialogProps {
-  onCreate: (title: string, template?: 'novel' | 'screenplay' | 'short-story' | 'from-scratch') => void;
+  onCreate: (title: string, template?: StoryTemplate | null, description?: string) => void;
   onCancel: () => void;
 }
 
 const NewProjectDialog: React.FC<NewProjectDialogProps> = ({ onCreate, onCancel }) => {
   const [title, setTitle] = useState('');
-  const [template, setTemplate] = useState<'novel' | 'screenplay' | 'short-story' | 'from-scratch' | ''>('');
+  const [description, setDescription] = useState('');
+  const [selectedTemplate, setSelectedTemplate] = useState<StoryTemplate | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (title.trim()) {
-      onCreate(title.trim(), template || undefined);
+      onCreate(title.trim(), selectedTemplate, description.trim() || undefined);
     }
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-4 border-b border-gray-200">
             <h2 className="text-lg font-semibold text-gray-900">Create New Project</h2>
           </div>
           
-          <div className="px-6 py-4 space-y-4">
+          <div className="px-6 py-4 space-y-6">
             <div>
               <label htmlFor="project-title" className="block text-sm font-medium text-gray-900 mb-2">
                 Project Title *
@@ -542,22 +556,23 @@ const NewProjectDialog: React.FC<NewProjectDialogProps> = ({ onCreate, onCancel 
             </div>
 
             <div>
-              <label htmlFor="project-template" className="block text-sm font-medium text-gray-900 mb-2">
-                Template (Optional)
+              <label htmlFor="project-description" className="block text-sm font-medium text-gray-900 mb-2">
+                Description (Optional)
               </label>
-              <select
-                id="project-template"
-                value={template}
-                onChange={(e) => setTemplate(e.target.value as any)}
+              <textarea
+                id="project-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-gray-900"
-              >
-                <option value="">Custom (3 acts)</option>
-                <option value="from-scratch">From Scratch (1 act)</option>
-                <option value="novel">Novel (3 acts)</option>
-                <option value="screenplay">Screenplay (4 acts)</option>
-                <option value="short-story">Short Story (3 acts)</option>
-              </select>
+                placeholder="Brief description of your story"
+                rows={3}
+              />
             </div>
+
+            <TemplateSelector
+              onTemplateSelect={setSelectedTemplate}
+              selectedTemplate={selectedTemplate}
+            />
           </div>
 
           <div className="px-6 py-4 border-t border-gray-200 flex justify-end gap-3">

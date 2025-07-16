@@ -133,6 +133,14 @@ router.patch('/:projectId/acts/:actId/plotpoints/:plotPointId', async (req: Auth
     );
     const updateData = validateRequest(updatePlotPointSchema, req.body);
 
+    console.log('🔧 Plot Point Update:', {
+      plotPointId,
+      receivedData: req.body,
+      validatedData: updateData,
+      hasEventType: 'eventType' in req.body,
+      eventTypeValue: req.body.eventType
+    });
+
     // Check user has edit access
     const project = await db.project.findFirst({
       where: {
@@ -180,6 +188,14 @@ router.put('/:projectId/acts/:actId/plotpoints/:plotPointId', async (req: Authen
       req.params
     );
     const updateData = validateRequest(updatePlotPointSchema, req.body);
+
+    console.log('🔧 Plot Point Update (PUT):', {
+      plotPointId,
+      receivedData: req.body,
+      validatedData: updateData,
+      hasEventType: 'eventType' in req.body,
+      eventTypeValue: req.body.eventType
+    });
 
     // Check user has edit access
     const project = await db.project.findFirst({

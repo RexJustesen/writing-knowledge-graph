@@ -14,35 +14,27 @@ import {
   ValidationError 
 } from '../lib/errors';
 import { authenticateToken, AuthenticatedRequest } from '../lib/middleware';
+import { getTemplateById, getLegacyTemplate, BACKEND_STORY_TEMPLATES } from '../lib/storyTemplates';
 
-// Helper function to get default acts based on template
-function getDefaultActsForTemplate(template?: 'NOVEL' | 'SCREENPLAY' | 'SHORT_STORY' | 'FROM_SCRATCH') {
-  switch (template) {
-    case 'SCREENPLAY':
-      return [
-        { name: 'Act I', description: 'Setup and inciting incident', order: 1 },
-        { name: 'Act II-A', description: 'First half of second act', order: 2 },
-        { name: 'Act II-B', description: 'Second half of second act', order: 3 },
-        { name: 'Act III', description: 'Climax and resolution', order: 4 },
-      ];
-    case 'SHORT_STORY':
-      return [
-        { name: 'Beginning', description: 'Opening and setup', order: 1 },
-        { name: 'Middle', description: 'Conflict and development', order: 2 },
-        { name: 'End', description: 'Climax and resolution', order: 3 },
-      ];
-    case 'FROM_SCRATCH':
-      return [
-        { name: 'Act 1', description: 'First act', order: 1 },
-      ];
-    case 'NOVEL':
-    default:
-      return [
-        { name: 'Act I', description: 'Setup and inciting incident', order: 1 },
-        { name: 'Act II', description: 'Rising action and complications', order: 2 },
-        { name: 'Act III', description: 'Climax and resolution', order: 3 },
-      ];
+// Helper function to get template data - supports both new Sprint 2 templates and legacy templates
+function getTemplateData(templateId?: string): { template: any; isLegacy: boolean } {
+  // Handle legacy templates first
+  if (templateId && ['NOVEL', 'SCREENPLAY', 'SHORT_STORY', 'FROM_SCRATCH'].includes(templateId)) {
+    const legacyTemplate = getLegacyTemplate(templateId as 'NOVEL' | 'SCREENPLAY' | 'SHORT_STORY' | 'FROM_SCRATCH');
+    return { template: legacyTemplate, isLegacy: true };
   }
+  
+  // Handle new Sprint 2 templates
+  if (templateId) {
+    const newTemplate = getTemplateById(templateId);
+    if (newTemplate) {
+      return { template: newTemplate, isLegacy: false };
+    }
+  }
+  
+  // Default to three-act structure
+  const defaultTemplate = getTemplateById('three-act-universal');
+  return { template: defaultTemplate, isLegacy: false };
 }
 
 const router = express.Router();
@@ -273,7 +265,11 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
 
     console.log('Creating project with template:', template);
 
-    // Create the project in a transaction to ensure acts are created atomically
+    // Get template data
+    const { template: templateData, isLegacy } = getTemplateData(template);
+    console.log('Using template data:', templateData?.name, 'isLegacy:', isLegacy);
+
+    // Create the project in a transaction to ensure everything is created atomically
     const result = await db.$transaction(async (tx) => {
       // Create the project
       const project = await tx.project.create({
@@ -291,22 +287,108 @@ router.post('/', async (req: AuthenticatedRequest, res, next) => {
         }
       });
 
-      // Create default acts based on template
-      const defaultActs = getDefaultActsForTemplate(template);
-      console.log('Default acts for template:', template, defaultActs);
-      const createdActs = [];
-      
-      for (const actTemplate of defaultActs) {
-        console.log('Creating act:', actTemplate);
-        const act = await tx.act.create({
+      let createdActs = [];
+      let actIdMapping: { [order: number]: string } = {};
+
+      if (templateData) {
+        // Create acts from template
+        console.log('Creating acts from template:', templateData.acts);
+        for (const actTemplate of templateData.acts) {
+          const act = await tx.act.create({
+            data: {
+              projectId: project.id,
+              name: actTemplate.name,
+              description: actTemplate.description,
+              order: actTemplate.order,
+            }
+          });
+          createdActs.push(act);
+          actIdMapping[actTemplate.order] = act.id;
+          console.log(`Created act: ${actTemplate.name} with ID: ${act.id}`);
+        }
+
+        // Create characters from template (if any)
+        if (templateData.characters && templateData.characters.length > 0) {
+          console.log('Creating characters from template:', templateData.characters.length);
+          for (const charTemplate of templateData.characters) {
+            await tx.character.create({
+              data: {
+                projectId: project.id,
+                name: charTemplate.name,
+                description: charTemplate.description || '',
+                appearance: charTemplate.appearance || '',
+                personality: charTemplate.personality || '',
+                motivation: charTemplate.motivation || '',
+                characterType: charTemplate.characterType,
+              }
+            });
+            console.log(`Created character: ${charTemplate.name}`);
+          }
+        }
+
+        // Create plot points and scenes from template (if any)
+        if (templateData.plotPoints && templateData.plotPoints.length > 0) {
+          console.log('Creating plot points from template:', templateData.plotPoints.length);
+          for (const plotPointTemplate of templateData.plotPoints) {
+            const actId = actIdMapping[plotPointTemplate.actOrder];
+            if (!actId) {
+              console.warn(`No act found for order ${plotPointTemplate.actOrder}, skipping plot point`);
+              continue;
+            }
+
+            // Create the plot point
+            const plotPoint = await tx.plotPoint.create({
+              data: {
+                projectId: project.id,
+                actId: actId,
+                title: plotPointTemplate.title,
+                synopsis: plotPointTemplate.description,
+                position: {
+                  x: 100 + (plotPointTemplate.plotPointOrder * 200) + (plotPointTemplate.actOrder - 1) * 600,
+                  y: 100
+                },
+                color: plotPointTemplate.color,
+                order: plotPointTemplate.plotPointOrder,
+                // TODO: Add eventType support once types are updated
+                eventType: plotPointTemplate.eventType,
+              }
+            });
+            console.log(`Created plot point: ${plotPointTemplate.title} with ID: ${plotPoint.id}`);
+
+            // Create scenes for this plot point (if any)
+            if (plotPointTemplate.scenes && plotPointTemplate.scenes.length > 0) {
+              for (const sceneTemplate of plotPointTemplate.scenes) {
+                await tx.scene.create({
+                  data: {
+                    projectId: project.id,
+                    plotPointId: plotPoint.id,
+                    title: sceneTemplate.title,
+                    synopsis: sceneTemplate.synopsis,
+                    content: sceneTemplate.content || sceneTemplate.synopsis,
+                    position: {
+                      // Always position scenes relative to their plot point for better layout
+                      x: (plotPoint.position as any).x + (sceneTemplate.sceneOrder * 120), // Slightly more spacing
+                      y: (plotPoint.position as any).y + 60 // Slightly below the plot point
+                    },
+                    order: sceneTemplate.sceneOrder,
+                  }
+                });
+                console.log(`Created scene: ${sceneTemplate.title}`);
+              }
+            }
+          }
+        }
+      } else {
+        // Fallback: create default act if no template
+        const defaultAct = await tx.act.create({
           data: {
             projectId: project.id,
-            name: actTemplate.name,
-            description: actTemplate.description,
-            order: actTemplate.order,
+            name: 'Act 1',
+            description: 'First act',
+            order: 1,
           }
         });
-        createdActs.push(act);
+        createdActs.push(defaultAct);
       }
 
       // Set the first act as the current act

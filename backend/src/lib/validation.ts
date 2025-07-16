@@ -20,7 +20,12 @@ export const refreshTokenSchema = z.object({
 export const createProjectSchema = z.object({
   title: z.string().min(1, 'Project title is required').max(200, 'Title too long'),
   description: z.string().max(1000, 'Description too long').optional(),
-  template: z.enum(['NOVEL', 'SCREENPLAY', 'SHORT_STORY', 'FROM_SCRATCH']).optional(),
+  template: z.enum([
+    // Legacy templates
+    'NOVEL', 'SCREENPLAY', 'SHORT_STORY', 'FROM_SCRATCH',
+    // New Sprint 2 templates  
+    'three-act-universal', 'mystery-thriller', 'romance'
+  ]).optional(),
   tags: z.array(z.string().max(50)).max(20, 'Too many tags').optional(),
 });
 
@@ -74,6 +79,7 @@ export const createPlotPointSchema = z.object({
   }),
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Invalid color format').optional(),
   order: z.number().int().optional(),
+  eventType: z.string().optional(), // Event Type for story structure tracking
 });
 
 export const updatePlotPointSchema = z.object({
@@ -86,6 +92,7 @@ export const updatePlotPointSchema = z.object({
   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
   order: z.number().int().optional(),
   actId: z.string().optional(), // For moving between acts
+  eventType: z.string().optional(), // Event Type for story structure tracking
 });
 
 // Scene validation schemas

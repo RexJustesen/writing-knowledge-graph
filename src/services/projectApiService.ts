@@ -37,6 +37,7 @@ export interface PlotPoint {
   synopsis?: string;
   position: { x: number; y: number };
   color: string;
+  eventType?: string;
   order?: number;
   createdAt: string;
   updatedAt: string;
@@ -122,7 +123,7 @@ export interface Collaborator {
 export interface CreateProjectRequest {
   title: string;
   description?: string;
-  template?: 'NOVEL' | 'SCREENPLAY' | 'SHORT_STORY' | 'FROM_SCRATCH';
+  template?: 'NOVEL' | 'SCREENPLAY' | 'SHORT_STORY' | 'FROM_SCRATCH' | 'three-act-universal' | 'mystery-thriller' | 'romance';
 }
 
 export interface UpdateProjectRequest {
@@ -164,6 +165,7 @@ export interface CreatePlotPointRequest {
   };
   color?: string;
   order?: number;
+  eventType?: string;
 }
 
 export interface UpdatePlotPointRequest {
@@ -176,6 +178,7 @@ export interface UpdatePlotPointRequest {
   color?: string;
   order?: number;
   actId?: string;
+  eventType?: string;
 }
 
 export interface CreateSceneRequest {
