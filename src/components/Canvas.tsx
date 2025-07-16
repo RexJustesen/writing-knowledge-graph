@@ -373,93 +373,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     setCy(cytoscapeInstance);
 
     // Event handlers for user interactions
-    cytoscapeInstance.on('tap', 'node[type="plot-point"]', (event) => {
-      const node = event.target;
-      const plotPointId = node.id();
-      
-      // Select the node (adds yellow ring)
-      node.select();
-      
-      // Center the node in the canvas with smooth animation
-      cytoscapeInstance.animate({
-        center: { eles: node },
-        zoom: cytoscapeInstance.zoom()
-      }, {
-        duration: 300,
-        easing: 'ease-out'
-      });
-      
-      // Always open property panel on single click
-      setSelectedNode(node);
-      
-      // Toggle scene visibility for this plot point
-      if (expandedPlotPoint === plotPointId) {
-        setExpandedPlotPoint(null); // Collapse scenes
-      } else {
-        setExpandedPlotPoint(plotPointId); // Expand scenes
-      }
-    });
+    // NOTE: Main event handlers moved to project-dependent useEffect below
 
-    // Double-click to zoom to plot point focus
-    cytoscapeInstance.on('dbltap', 'node[type="plot-point"]', (event: { target: any; }) => {
-      const node = event.target;
-      const plotPointId = node.id();
-      
-      if (currentZoom === ZoomLevel.STORY_OVERVIEW) {
-        // Zoom to plot point focus (PRD Section 4.5)
-        zoomToPlotPoint(plotPointId);
-      }
-    });
 
-    cytoscapeInstance.on('tap', 'node[type="scene"]', (event) => {
-      const node = event.target;
-      const sceneId = node.id();
-      
-      // Select the node (adds yellow ring)
-      node.select();
-      
-      // Center the node in the canvas with smooth animation
-      cytoscapeInstance.animate({
-        center: { eles: node },
-        zoom: cytoscapeInstance.zoom()
-      }, {
-        duration: 300,
-        easing: 'ease-out'
-      });
-      
-      // Always open property panel on single click
-      setSelectedNode(node);
-    });
 
-    // Double-click to zoom to scene detail
-    cytoscapeInstance.on('dbltap', 'node[type="scene"]', (event) => {
-      const node = event.target;
-      const sceneId = node.id();
-      
-      if (currentZoom === ZoomLevel.PLOT_POINT_FOCUS) {
-        // Zoom to scene detail (PRD Section 4.5)
-        zoomToScene(sceneId);
-      }
-    });
 
-    // Handle selection of detail nodes (characters, settings, items)
-    cytoscapeInstance.on('tap', 'node[type="character"], node[type="setting"], node[type="item"]', (event) => {
-      const node = event.target;
-      
-      // Select the node (adds yellow ring)
-      node.select();
-      
-      // Center the node in the canvas with smooth animation
-      cytoscapeInstance.animate({
-        center: { eles: node },
-        zoom: cytoscapeInstance.zoom()
-      }, {
-        duration: 300,
-        easing: 'ease-out'
-      });
-      
-      setSelectedNode(node);
-    });
+
+
+
+
 
     // Right-click context menu (PRD Section 6.2)
     cytoscapeInstance.on('cxttap', 'node', (event) => {
@@ -468,59 +390,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       showContextMenu(node, event.originalEvent.clientX, event.originalEvent.clientY);
     });
 
-    // Canvas click to add new plot points or close panels
-    cytoscapeInstance.on('tap', (event) => {
-      if (event.target === cytoscapeInstance) {
-        // Close property panel if clicking on empty canvas
-        setSelectedNode(null);
-        
-        const position = event.position;
-        if (currentZoom === ZoomLevel.STORY_OVERVIEW && position) {
-          // Debug: Log current act info
-          console.log('Creating new plot point:', {
-            currentActId: project.currentActId,
-            currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
-            position: { x: position.x, y: position.y }
-          });
-          
-          // Create temporary node that will be saved when user edits it
-          const tempId = `temp-${Date.now()}`;
-          setTempNode({
-            id: tempId,
-            title: 'New Plot Point',
-            position: { x: position.x, y: position.y },
-            color: '#3b82f6',
-            actId: project.currentActId, // Assign to current act
-            scenes: []
-          });
-          
-          // Add temporary node to canvas
-          const tempCyNodes = cytoscapeInstance.add({
-            data: {
-              id: tempId,
-              label: 'New Plot Point',
-              type: 'plot-point',
-              color: '#3b82f6',
-              data: {
-                id: tempId,
-                title: 'New Plot Point',
-                position: { x: position.x, y: position.y },
-                color: '#3b82f6',
-                actId: project.currentActId, // Assign to current act
-                scenes: []
-              }
-            },
-            position: { x: position.x, y: position.y }
-          });
-          
-          // Immediately select the temp node for editing - get the first element from collection
-          const tempCyNode = tempCyNodes[0];
-          tempCyNode.select(); // Add selection (yellow ring)
-          // No centering animation - just select the node
-          setSelectedNode(tempCyNode);
-        }
-      }
-    });
+
 
     // Node drag event handlers for position tracking
     // Track when dragging starts
