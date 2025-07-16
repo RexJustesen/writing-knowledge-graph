@@ -1068,18 +1068,12 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
             console.error('Failed to create scene:', scene.title, error);
           }
         } else {
-          // Try to update existing scene
-          try {
-            await ProjectApiService.updateScene(projectId, plotPointId, scene.id, {
-              title: scene.title,
-              synopsis: scene.synopsis,
-              content: scene.synopsis,
-              position: scene.position,
-              characterIds: scene.characterIds || []
-            });
-            console.log(`Updated scene: ${scene.title}`);
-          } catch (error) {
-            // If update fails, try to create it
+          // First check if scene exists in backend by comparing with backend scenes
+          const sceneExistsInBackend = backendScenes.some((bs: any) => bs.id === scene.id);
+          
+          if (!sceneExistsInBackend) {
+            // Scene doesn't exist in backend (probably from undo), create it
+            console.log(`🔄 ProjectWorkspace: Scene ${scene.title} (${scene.id}) doesn't exist in backend, creating new one`);
             try {
               const scenePosition = scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number'
                 ? scene.position 
@@ -1096,9 +1090,44 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
                 position: scenePosition,
                 characterIds: scene.characterIds || []
               });
-              console.log(`Created scene (after update failed): ${scene.title} with ID: ${createdScene.id}`);
-            } catch (createError) {
-              console.error('Failed to create scene after update failed:', scene.title, createError);
+              console.log(`✅ ProjectWorkspace: Created scene (non-existent): ${scene.title} with ID: ${createdScene.id}`);
+            } catch (error) {
+              console.error('❌ ProjectWorkspace: Failed to create non-existent scene:', scene.title, error);
+            }
+          } else {
+            // Scene exists in backend, try to update it
+            try {
+              await ProjectApiService.updateScene(projectId, plotPointId, scene.id, {
+                title: scene.title,
+                synopsis: scene.synopsis,
+                content: scene.synopsis,
+                position: scene.position,
+                characterIds: scene.characterIds || []
+              });
+              console.log(`Updated scene: ${scene.title}`);
+            } catch (error) {
+              // If update still fails, try to create it as fallback
+              console.log(`⚠️ ProjectWorkspace: Update failed for existing scene ${scene.title}, creating new one as fallback`);
+              try {
+                const scenePosition = scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number'
+                  ? scene.position 
+                  : (project?.plotPoints.find(pp => pp.id === plotPointId) ? 
+                      generateScenePosition(project.plotPoints.find(pp => pp.id === plotPointId)!, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes, project.plotPoints.find(pp => pp.id === plotPointId)!.scenes.length) : 
+                      { x: 0, y: 0 }
+                    );
+                
+                const createdScene = await ProjectApiService.createScene(projectId, plotPointId, {
+                  plotPointId: plotPointId,
+                  title: scene.title,
+                  synopsis: scene.synopsis,
+                  content: scene.synopsis,
+                  position: scenePosition,
+                  characterIds: scene.characterIds || []
+                });
+                console.log(`Created scene (after update failed): ${scene.title} with ID: ${createdScene.id}`);
+              } catch (createError) {
+                console.error('Failed to create scene after update failed:', scene.title, createError);
+              }
             }
           }
         }

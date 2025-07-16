@@ -309,7 +309,7 @@ const CharacterManager: React.FC<CharacterManagerProps> = ({ project, onProjectU
         </button>
 
         {showCharacterList && (
-          <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-40 min-w-[300px]">
+          <div className="absolute top-full right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-40 min-w-[300px] mr-4">
             <div className="p-3 border-b border-gray-200">
               <div className="flex justify-between items-center">
                 <h3 className="font-medium text-gray-900">Story Characters</h3>
