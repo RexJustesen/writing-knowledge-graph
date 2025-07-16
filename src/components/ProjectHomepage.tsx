@@ -5,12 +5,17 @@ import { Project } from '@/services/projectApiService';
 import { ProjectApiService } from '@/services/projectApiService';
 import { useAuth } from '@/contexts/AuthContext';
 import { socketService } from '@/services/socketService';
+import GlobalSearchBar from './GlobalSearchBar';
+import QuickNavPalette from './QuickNavPalette';
+import { SearchProvider, useSearch } from '@/contexts/SearchContext';
+import { SearchResult } from '@/services/searchService';
+import { NavigationService } from '@/services/navigationService';
 
 interface ProjectHomepageProps {
   onProjectSelect: (projectId: string) => void;
 }
 
-const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) => {
+const ProjectHomepageContent: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) => {
   const [projects, setProjects] = useState<Project[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<Project[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
@@ -19,9 +24,34 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, logout } = useAuth();
+  const { isQuickNavOpen, closeQuickNav, handleSearchNavigation, handleQuickNavigation } = useSearch();
 
   const handleProjectSelect = (projectId: string) => {
+    // Track project access
+    const project = projects.find(p => p.id === projectId);
+    if (project) {
+      NavigationService.trackProjectAccess(projectId, project.title);
+    }
     onProjectSelect(projectId);
+  };
+
+  // Handle navigation from global search
+  const handleGlobalSearchNavigation = (result: SearchResult) => {
+    if (result.type === 'project') {
+      handleProjectSelect(result.projectId);
+    } else {
+      // For non-project results, navigate to the project and then to the specific item
+      handleSearchNavigation(result);
+    }
+  };
+
+  // Handle navigation from quick nav
+  const handleQuickNavNavigation = (item: any) => {
+    if (item.type === 'project') {
+      handleProjectSelect(item.projectId);
+    } else {
+      handleQuickNavigation(item);
+    }
   };
 
   // Load projects on component mount and connect socket
@@ -177,6 +207,14 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
             <p className="text-gray-600 mt-2">Manage and organize your stories</p>
           </div>
           <div className="flex items-center gap-4">
+            {/* Global Search */}
+            <div className="w-80">
+              <GlobalSearchBar
+                placeholder="Search all projects..."
+                onNavigate={handleGlobalSearchNavigation}
+              />
+            </div>
+
             <button
               onClick={() => {
                 setShowNewProjectDialog(true);
@@ -329,7 +367,29 @@ const ProjectHomepage: React.FC<ProjectHomepageProps> = ({ onProjectSelect }) =>
           onCancel={() => setShowNewProjectDialog(false)}
         />
       )}
+
+      {/* Quick Navigation Palette */}
+      <QuickNavPalette
+        isOpen={isQuickNavOpen}
+        onClose={closeQuickNav}
+        onNavigate={handleQuickNavNavigation}
+      />
     </div>
+  );
+};
+
+// Main component wrapped in SearchProvider
+const ProjectHomepage: React.FC<ProjectHomepageProps> = (props) => {
+  return (
+    <SearchProvider onNavigate={(path) => {
+      // Handle navigation - in this case, if it's a project, extract the ID
+      const projectMatch = path.match(/\/project\/([^?]+)/);
+      if (projectMatch) {
+        props.onProjectSelect(projectMatch[1]);
+      }
+    }}>
+      <ProjectHomepageContent {...props} />
+    </SearchProvider>
   );
 };
 

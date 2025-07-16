@@ -12,6 +12,7 @@ import characterRoutes from './routes/characters';
 import settingRoutes from './routes/settings';
 import itemRoutes from './routes/items';
 import collaboratorRoutes from './routes/collaborators';
+import searchRoutes from './routes/search';
 
 // Import environment variables
 import dotenv from 'dotenv';
@@ -50,6 +51,7 @@ app.get('/health', (req, res) => {
 
 // API Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/search', searchRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/projects', actRoutes);
 app.use('/api/projects', plotPointRoutes);

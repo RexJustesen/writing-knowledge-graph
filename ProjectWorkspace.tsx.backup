@@ -1,7 +1,6 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { flushSync } from 'react-dom';
 import Canvas, { CanvasHandle } from './Canvas';
 import Toolbar from './Toolbar';
 import ActNavigation from './ActNavigation';
@@ -80,7 +79,7 @@ interface ProjectWorkspaceProps {
   onBackToHomepage: () => void;
 }
 
-const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackToHomepage }) => {
+const ProjectWorkspaceContent: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackToHomepage }) => {
   const [project, setProject] = useState<Project | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -91,10 +90,12 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const [isSyncing, setIsSyncing] = useState(false);
   const [saveQueueLength, setSaveQueueLength] = useState(0);
   
-  // Sprint 1: Search context integration
+  // Search context integration
   const { 
     isQuickNavOpen, 
     closeQuickNav, 
+    handleSearchNavigation, 
+    handleQuickNavigation,
     setCurrentProject 
   } = useSearch();
 
@@ -103,7 +104,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     loadProject();
   }, [projectId]);
 
-  // Sprint 1: Update search context when project changes
+  // Update search context when project changes
   useEffect(() => {
     setCurrentProject(project || undefined);
     
@@ -112,21 +113,6 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       NavigationService.trackProjectAccess(project.id, project.title);
     }
   }, [project, setCurrentProject]);
-
-  // Sprint 1: Keyboard shortcuts for act navigation
-  useEffect(() => {
-    const handleKeyboard = (e: KeyboardEvent) => {
-      // Act switching shortcuts: Ctrl/Cmd + 1-5
-      if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '5') {
-        e.preventDefault();
-        const actNumber = parseInt(e.key);
-        handleActSwitchByNumber(actNumber);
-      }
-    };
-    
-    document.addEventListener('keydown', handleKeyboard);
-    return () => document.removeEventListener('keydown', handleKeyboard);
-  }, [project]);
 
   // Close user menu when clicking outside
   useEffect(() => {
@@ -478,38 +464,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   };
 
   const handleActChange = (actId: string) => {
-    console.log('🎬 handleActChange called:', {
-      requestedActId: actId,
-      currentActId: project?.currentActId,
-      requestedAct: project?.acts.find(a => a.id === actId)?.name,
-      currentAct: project?.acts.find(a => a.id === project?.currentActId)?.name,
-      timestamp: new Date().toLocaleTimeString()
-    });
-    
-    // Ensure the project state is updated immediately
-    if (project && actId !== project.currentActId) {
-      const updatedProject = {
-        ...project,
-        currentActId: actId,
-        lastModified: new Date()
-      };
-      
-      console.log('🔄 Updating project state immediately for act change:', {
-        from: project.currentActId,
-        to: actId,
-        fromAct: project.acts.find(a => a.id === project.currentActId)?.name,
-        toAct: project.acts.find(a => a.id === actId)?.name
-      });
-      
-      // Use flushSync to ensure immediate state update
-      flushSync(() => {
-        setProject(updatedProject);
-      });
-      
-      // Also call handleProjectUpdate for backend sync
-      handleProjectUpdate(updatedProject, true);
-    }
-    
+    // Act change is handled in handleProjectUpdate when ActNavigation updates the project
     // Trigger zoom-to-fit for the new act's content
     setTimeout(() => {
       if (canvasRef.current) {
@@ -517,7 +472,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       }
     }, 100); // Small delay to ensure act content has been rendered
     
-    // Sprint 1: Track act access
+    // Track act access
     if (project) {
       const act = project.acts.find(a => a.id === actId);
       if (act) {
@@ -526,10 +481,11 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     }
   };
 
-  // Sprint 1: Handle act switching by number (for keyboard shortcuts)
+  // Handle act switching by number (for keyboard shortcuts)
   const handleActSwitchByNumber = (actNumber: number) => {
     if (!project) return;
     
+    // Find act by order/number
     const targetAct = project.acts.find(act => act.order === actNumber);
     if (targetAct) {
       const updatedProject = {
@@ -541,17 +497,9 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     }
   };
 
-  // Sprint 1: Handle search navigation within project
-  const handleProjectSearchNavigation = async (result: SearchResult) => {
+  // Handle search navigation within project
+  const handleProjectSearchNavigation = (result: SearchResult) => {
     if (!project) return;
-
-    console.log('🔍 Search navigation triggered:', {
-      resultType: result.type,
-      resultId: result.id,
-      resultTitle: result.title,
-      currentActId: project.currentActId,
-      timestamp: new Date().toLocaleTimeString()
-    });
 
     switch (result.type) {
       case 'act':
@@ -566,112 +514,57 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         }
         break;
       case 'plotpoint':
-        let plotPoint = project.plotPoints.find(pp => pp.id === result.id);
-        if (!plotPoint) {
-          // Plot point not found in current state, refresh project data
-          console.log('Plot point not found in current state, refreshing project data...');
-          try {
-            const backendProject = await ProjectApiService.getProject(projectId);
-            if (backendProject) {
-              const refreshedProject = await convertBackendProject(backendProject);
-              setProject(refreshedProject);
-              
-              // Now try to find the plot point in the refreshed data
-              const refreshedPlotPoint = refreshedProject.plotPoints.find(pp => pp.id === result.id);
-              if (refreshedPlotPoint) {
-                const updatedProject = {
-                  ...refreshedProject,
-                  currentActId: refreshedPlotPoint.actId,
-                  focusedElementId: refreshedPlotPoint.id
-                };
-                handleProjectUpdate(updatedProject, true);
-                handleActChange(refreshedPlotPoint.actId);
-                
-                setTimeout(() => {
-                  if (canvasRef.current) {
-                    canvasRef.current.handleZoomToFit();
-                  }
-                }, 200);
-              }
+        // Switch to the plot point's act and focus on it
+        const plotPoint = project.plotPoints.find(pp => pp.id === result.id);
+        if (plotPoint) {
+          const updatedProject = {
+            ...project,
+            currentActId: plotPoint.actId,
+            focusedElementId: plotPoint.id
+          };
+          handleProjectUpdate(updatedProject, true);
+          handleActChange(plotPoint.actId);
+          
+          // Focus on the plot point in canvas
+          setTimeout(() => {
+            if (canvasRef.current) {
+              canvasRef.current.handleZoomToFit();
             }
-          } catch (error) {
-            console.error('Failed to refresh project data:', error);
-          }
-          return;
+          }, 200);
         }
-        
-        const plotPointUpdatedProject = {
-          ...project,
-          currentActId: plotPoint.actId,
-          focusedElementId: plotPoint.id
-        };
-        handleProjectUpdate(plotPointUpdatedProject, true);
-        handleActChange(plotPoint.actId);
-        
-        setTimeout(() => {
-          if (canvasRef.current) {
-            canvasRef.current.handleZoomToFit();
-          }
-        }, 200);
         break;
       case 'character':
-        const characterUpdatedProject = {
+        // Switch to character focus mode
+        const updatedProject = {
           ...project,
           focusedElementId: result.id,
           currentZoomLevel: ZoomLevel.CHARACTER_FOCUS
         };
-        handleProjectUpdate(characterUpdatedProject, true);
+        handleProjectUpdate(updatedProject, true);
         break;
       case 'scene':
-        let sceneFound = project.plotPoints
+        // Find the scene's plot point and switch to it
+        const sceneFound = project.plotPoints
           .flatMap(pp => pp.scenes.map(scene => ({ scene, plotPoint: pp })))
           .find(({ scene }) => scene.id === result.id);
         
-        if (!sceneFound) {
-          // Scene not found in current state, refresh project data
-          console.log('Scene not found in current state, refreshing project data...');
-          try {
-            const backendProject = await ProjectApiService.getProject(projectId);
-            if (backendProject) {
-              const refreshedProject = await convertBackendProject(backendProject);
-              setProject(refreshedProject);
-              
-              // Now try to find the scene in the refreshed data
-              const refreshedSceneFound = refreshedProject.plotPoints
-                .flatMap(pp => pp.scenes.map(scene => ({ scene, plotPoint: pp })))
-                .find(({ scene }) => scene.id === result.id);
-              
-              if (refreshedSceneFound) {
-                const updatedProject = {
-                  ...refreshedProject,
-                  currentActId: refreshedSceneFound.plotPoint.actId,
-                  focusedElementId: refreshedSceneFound.scene.id,
-                  currentZoomLevel: ZoomLevel.SCENE_DETAIL
-                };
-                handleProjectUpdate(updatedProject, true);
-                handleActChange(refreshedSceneFound.plotPoint.actId);
-              }
-            }
-          } catch (error) {
-            console.error('Failed to refresh project data:', error);
-          }
-          return;
+        if (sceneFound) {
+          const updatedProject = {
+            ...project,
+            currentActId: sceneFound.plotPoint.actId,
+            focusedElementId: sceneFound.scene.id,
+            currentZoomLevel: ZoomLevel.SCENE_DETAIL
+          };
+          handleProjectUpdate(updatedProject, true);
+          handleActChange(sceneFound.plotPoint.actId);
         }
-        
-        const sceneUpdatedProject = {
-          ...project,
-          currentActId: sceneFound.plotPoint.actId,
-          focusedElementId: sceneFound.scene.id,
-          currentZoomLevel: ZoomLevel.SCENE_DETAIL
-        };
-        handleProjectUpdate(sceneUpdatedProject, true);
-        handleActChange(sceneFound.plotPoint.actId);
         break;
     }
   };
 
-  // Sprint 1: Handle quick nav navigation
+  // Handle quick nav navigation within project
   const handleProjectQuickNavigation = (item: any) => {
+    // Similar logic to search navigation
     handleProjectSearchNavigation({
       id: item.id,
       type: item.type,
@@ -683,13 +576,15 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
     } as SearchResult);
   };
 
-  // Sprint 1: Handle recent items navigation
+  // Handle recent items navigation
   const handleRecentItemNavigation = (item: RecentItem) => {
     if (item.projectId !== projectId) {
+      // Navigate to different project
       onBackToHomepage();
       return;
     }
 
+    // Navigate within current project
     handleProjectSearchNavigation({
       id: item.id,
       type: item.type as any,
@@ -1155,7 +1050,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
   return (
     <div className="h-screen flex bg-gray-100">
-      {/* Sprint 1: Recent Items Sidebar */}
+      {/* Recent Items Sidebar */}
       {showRecentItems && (
         <RecentItemsSidebar
           onNavigate={handleRecentItemNavigation}
@@ -1167,79 +1062,78 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       <div className="flex-1 flex flex-col min-w-0">
         {/* Project Header with Back Button */}
         <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center gap-4">
-        <button
-          onClick={onBackToHomepage}
-          className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
-          title="Back to Projects"
-        >
-          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
-          <span className="hidden sm:inline">Projects</span>
-        </button>
-        
-        {/* Project Info */}
-        <div className="flex-1 min-w-0">
-          <h1 className="text-lg font-semibold text-gray-900 truncate">{project.title}</h1>
-          {project.description && (
-            <p className="text-sm text-gray-600 truncate">{project.description}</p>
-          )}
-        </div>
-
-        {/* Sprint 1: Project Search */}
-        <div className="w-80 hidden lg:block">
-          <GlobalSearchBar
-            placeholder="Search in project..."
-            currentProjectId={project.id}
-            currentProject={project}
-            onNavigate={handleProjectSearchNavigation}
-          />
-        </div>
-
-        {/* Project Stats */}
-        <div className="flex items-center gap-4 text-sm text-gray-500">
-          <span>{project.acts.length} acts</span>
-          <span>{project.plotPoints.length} plot points</span>
-          <span>{project.characters.length} characters</span>
-          
-          {/* Sprint 1: Recent Items Toggle */}
           <button
-            onClick={() => setShowRecentItems(!showRecentItems)}
-            className={`p-2 rounded-lg transition-colors ${
-              showRecentItems ? 'bg-blue-100 text-blue-700' : 'text-gray-400 hover:text-gray-600'
-            }`}
-            title="Toggle recent items"
+            onClick={onBackToHomepage}
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 transition-colors"
+            title="Back to Projects"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
+            <span className="hidden sm:inline">Projects</span>
           </button>
-          
-          {/* Autosave Status Indicator */}
-          <div className="flex items-center gap-2">
-            {isSyncing ? (
-              <div className="flex items-center gap-1 text-blue-600">
-                <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                </svg>
-                <span className="text-xs">
-                  {saveQueueLength > 0 ? `Saving (${saveQueueLength} queued)` : 'Saving...'}
-                </span>
-              </div>
-            ) : hasUnsavedChanges ? (
-              <div className="flex items-center gap-1 text-amber-600">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
-                </svg>
-                <span className="text-xs">Unsaved</span>
-              </div>
-            ) : lastAutoSave ? (
-              <div className="flex items-center gap-1 text-green-600">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-                <span className="text-xs">Saved {lastAutoSave.toLocaleTimeString()}</span>
-              </div>
+
+          {/* Project Info */}
+          <div className="flex-1 min-w-0">
+            <h1 className="text-lg font-semibold text-gray-900 truncate">{project.title}</h1>
+            {project.description && (
+              <p className="text-sm text-gray-600 truncate">{project.description}</p>
+            )}
+          </div>
+
+          {/* Project Search */}
+          <div className="w-80 hidden lg:block">
+            <GlobalSearchBar
+              placeholder="Search in project..."
+              currentProjectId={project.id}
+              onNavigate={handleProjectSearchNavigation}
+            />
+          </div>
+
+          {/* Project Stats */}
+          <div className="flex items-center gap-4 text-sm text-gray-500">
+            <span>{project.acts.length} acts</span>
+            <span>{project.plotPoints.length} plot points</span>
+            <span>{project.characters.length} characters</span>
+            
+            {/* Recent Items Toggle */}
+            <button
+              onClick={() => setShowRecentItems(!showRecentItems)}
+              className={`p-2 rounded-lg transition-colors ${
+                showRecentItems ? 'bg-blue-100 text-blue-700' : 'text-gray-400 hover:text-gray-600'
+              }`}
+              title="Toggle recent items"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+            </button>
+            
+            {/* Autosave Status Indicator */}
+            <div className="flex items-center gap-2">
+              {isSyncing ? (
+                <div className="flex items-center gap-1 text-blue-600">
+                  <svg className="w-4 h-4 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <span className="text-xs">
+                    {saveQueueLength > 0 ? `Saving (${saveQueueLength} queued)` : 'Saving...'}
+                  </span>
+                </div>
+              ) : hasUnsavedChanges ? (
+                <div className="flex items-center gap-1 text-amber-600">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs">Unsaved</span>
+                </div>
+              ) : lastAutoSave ? (
+                <div className="flex items-center gap-1 text-green-600">
+                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-xs">Saved {lastAutoSave.toLocaleTimeString()}</span>
+                </div>
             ) : null}
           </div>
         </div>
@@ -1299,7 +1193,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
           <div className="absolute top-2 right-16 flex items-center space-x-2 bg-blue-50 text-blue-700 px-3 py-1 rounded-lg text-sm border border-blue-200">
             <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
             <span>Saving...</span>
           </div>
@@ -1314,9 +1208,8 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
           ref={canvasRef}
         />
       </div>
-      </div>
       
-      {/* Sprint 1: Quick Navigation Palette */}
+      {/* Quick Navigation Palette */}
       <QuickNavPalette
         isOpen={isQuickNavOpen}
         onClose={closeQuickNav}
@@ -1327,20 +1220,22 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   );
 };
 
-// Main component wrapped in SearchProvider for Sprint 1 functionality
-const ProjectWorkspaceWithSearch: React.FC<ProjectWorkspaceProps> = (props) => {
+// Main component wrapped in SearchProvider
+const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = (props) => {
   return (
     <SearchProvider 
       onNavigate={(path) => {
+        // For project workspace, we handle navigation internally
         console.log('Navigation requested:', path);
       }}
       onActSwitch={(actNumber) => {
-        console.log('Act switch requested:', actNumber);
+        // Handle act switching via the content component
+        // This will be handled by the keyboard shortcuts in the content component
       }}
     >
-      <ProjectWorkspace {...props} />
+      <ProjectWorkspaceContent {...props} />
     </SearchProvider>
   );
 };
 
-export default ProjectWorkspaceWithSearch;
+export default ProjectWorkspace;

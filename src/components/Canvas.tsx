@@ -7,39 +7,49 @@ import PropertyPanel from './PropertyPanel';
 
 // Helper function to detect and fix overlapping plot points
 const fixOverlappingPlotPoints = (plotPoints: PlotPoint[]): PlotPoint[] => {
-  const GRID_SIZE = 200;
-  const START_X = 100;
-  const START_Y = 100;
-  const MAX_COLS = 5;
+  const GRID_SIZE = 300; // Increased for better spacing
+  const START_X = 200;   // Moved away from origin
+  const START_Y = 200;   // Moved away from origin
+  const MAX_COLS = 4;    // Reduced for better organization
   
   // Group plot points by position to find overlaps
   const positionGroups = new Map<string, PlotPoint[]>();
   
   plotPoints.forEach(pp => {
-    const key = `${pp.position.x},${pp.position.y}`;
+    // Treat any position at origin or invalid as needing repositioning
+    const pos = pp.position;
+    const isValidPosition = pos && pos.x > 0 && pos.y > 0;
+    const key = isValidPosition ? `${pos.x},${pos.y}` : '0,0';
+    
     if (!positionGroups.has(key)) {
       positionGroups.set(key, []);
     }
     positionGroups.get(key)!.push(pp);
   });
   
-  // Find groups with more than one plot point (overlapping)
-  const overlappingGroups = Array.from(positionGroups.entries())
-    .filter(([key, group]) => group.length > 1);
+  // Find groups with more than one plot point (overlapping) or at origin
+  const problematicGroups = Array.from(positionGroups.entries())
+    .filter(([key, group]) => group.length > 1 || key === '0,0');
   
-  if (overlappingGroups.length === 0) {
+  if (problematicGroups.length === 0) {
     return plotPoints; // No overlaps, return as-is
   }
   
-  console.log(`Found ${overlappingGroups.length} overlapping position groups, fixing...`);
+  console.log(`🔧 Found ${problematicGroups.length} overlapping/invalid position groups, organizing in grid...`);
   
-  // Get all used positions
+  // Get all used positions (excluding problematic ones)
   const usedPositions = new Set<string>();
   plotPoints.forEach(pp => {
-    usedPositions.add(`${pp.position.x},${pp.position.y}`);
+    const pos = pp.position;
+    if (pos && pos.x > 0 && pos.y > 0) {
+      const key = `${pos.x},${pos.y}`;
+      if (!problematicGroups.some(([groupKey]) => groupKey === key)) {
+        usedPositions.add(key);
+      }
+    }
   });
   
-  // Function to find next available position
+  // Function to find next available grid position
   const findNextAvailablePosition = (): { x: number; y: number } => {
     let row = 0;
     let col = 0;
@@ -60,31 +70,38 @@ const fixOverlappingPlotPoints = (plotPoints: PlotPoint[]): PlotPoint[] => {
         row++;
       }
       
-      // Safety check
+      // Safety check to prevent infinite loop
       if (row > 20) {
-        return { x: START_X + Math.random() * 500, y: START_Y + Math.random() * 500 };
+        console.warn('Grid positioning reached safety limit, using random position');
+        return { 
+          x: START_X + Math.random() * 1000, 
+          y: START_Y + Math.random() * 1000 
+        };
       }
     }
   };
   
-  // Fix overlapping plot points by assigning new positions
+  // Create updated plot points array
   const updatedPlotPoints = [...plotPoints];
   
-  overlappingGroups.forEach(([key, group]) => {
-    // Keep the first plot point in its position, move the others
-    for (let i = 1; i < group.length; i++) {
-      const plotPointToMove = group[i];
-      const newPosition = findNextAvailablePosition();
+  // Fix all problematic groups
+  problematicGroups.forEach(([key, group]) => {
+    group.forEach((plotPointToMove, index) => {
+      if (index === 0 && key !== '0,0') {
+        // Keep first plot point in original position if not at origin
+        return;
+      }
       
-      const index = updatedPlotPoints.findIndex(pp => pp.id === plotPointToMove.id);
-      if (index !== -1) {
-        updatedPlotPoints[index] = {
-          ...updatedPlotPoints[index],
+      const newPosition = findNextAvailablePosition();
+      const plotPointIndex = updatedPlotPoints.findIndex(pp => pp.id === plotPointToMove.id);
+      if (plotPointIndex !== -1) {
+        updatedPlotPoints[plotPointIndex] = {
+          ...updatedPlotPoints[plotPointIndex],
           position: newPosition
         };
-        console.log(`Moved plot point "${plotPointToMove.title}" from ${key} to ${newPosition.x},${newPosition.y}`);
+        console.log(`📍 Moved plot point "${plotPointToMove.title}" to grid position ${newPosition.x},${newPosition.y}`);
       }
-    }
+    });
   });
   
   return updatedPlotPoints;
@@ -459,6 +476,13 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         
         const position = event.position;
         if (currentZoom === ZoomLevel.STORY_OVERVIEW && position) {
+          // Debug: Log current act info
+          console.log('Creating new plot point:', {
+            currentActId: project.currentActId,
+            currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+            position: { x: position.x, y: position.y }
+          });
+          
           // Create temporary node that will be saved when user edits it
           const tempId = `temp-${Date.now()}`;
           setTempNode({
@@ -561,6 +585,148 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     };
   }, []);
 
+  // Register event handlers that depend on project state - re-register when project changes
+  useEffect(() => {
+    if (!cy) return;
+
+    console.log('🔄 Canvas: Re-registering project-dependent event handlers', {
+      currentActId: project.currentActId,
+      currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+      timestamp: new Date().toLocaleTimeString()
+    });
+
+    // Remove existing canvas tap handler to avoid duplicates
+    cy.off('tap');
+
+    // Re-register all the node tap handlers (these don't depend on project state)
+    cy.on('tap', 'node[type="plot-point"]', (event) => {
+      const node = event.target;
+      const plotPointId = node.id();
+      
+      // Select the node (adds yellow ring)
+      node.select();
+      
+      // Center the node in the canvas with smooth animation
+      cy.animate({
+        center: { eles: node },
+        zoom: cy.zoom()
+      }, {
+        duration: 300,
+        easing: 'ease-out'
+      });
+      
+      // Always open property panel on single click
+      setSelectedNode(node);
+      
+      // Toggle scene visibility for this plot point
+      if (expandedPlotPoint === plotPointId) {
+        setExpandedPlotPoint(null); // Collapse scenes
+      } else {
+        setExpandedPlotPoint(plotPointId); // Expand scenes
+      }
+    });
+
+    cy.on('tap', 'node[type="scene"]', (event) => {
+      const node = event.target;
+      const sceneId = node.id();
+      
+      // Select the node (adds yellow ring)
+      node.select();
+      
+      // Center the node in the canvas with smooth animation
+      cy.animate({
+        center: { eles: node },
+        zoom: cy.zoom()
+      }, {
+        duration: 300,
+        easing: 'ease-out'
+      });
+      
+      // Always open property panel on single click
+      setSelectedNode(node);
+    });
+
+    cy.on('tap', 'node[type="character"], node[type="setting"], node[type="item"]', (event) => {
+      const node = event.target;
+      
+      // Select the node (adds yellow ring)
+      node.select();
+      
+      // Center the node in the canvas with smooth animation
+      cy.animate({
+        center: { eles: node },
+        zoom: cy.zoom()
+      }, {
+        duration: 300,
+        easing: 'ease-out'
+      });
+      
+      setSelectedNode(node);
+    });
+
+    cy.on('cxttap', 'node', (event) => {
+      event.preventDefault();
+      const node = event.target;
+      showContextMenu(node, event.originalEvent.clientX, event.originalEvent.clientY);
+    });
+
+    // Canvas click to add new plot points or close panels - THIS HANDLER DEPENDS ON PROJECT STATE
+    cy.on('tap', (event) => {
+      if (event.target === cy) {
+        // Close property panel if clicking on empty canvas
+        setSelectedNode(null);
+        
+        const position = event.position;
+        if (currentZoom === ZoomLevel.STORY_OVERVIEW && position) {
+          // Debug: Log current act info with FRESH project state
+          console.log('🎯 Canvas: Creating new plot point with FRESH project state:', {
+            currentActId: project.currentActId,
+            currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+            position: { x: position.x, y: position.y },
+            timestamp: new Date().toLocaleTimeString()
+          });
+          
+          // Create temporary node that will be saved when user edits it
+          const tempId = `temp-${Date.now()}`;
+          setTempNode({
+            id: tempId,
+            title: 'New Plot Point',
+            position: { x: position.x, y: position.y },
+            color: '#3b82f6',
+            actId: project.currentActId, // Assign to current act with FRESH state
+            scenes: []
+          });
+          
+          // Add temporary node to canvas
+          const tempCyNodes = cy.add({
+            data: {
+              id: tempId,
+              label: 'New Plot Point',
+              type: 'plot-point',
+              color: '#3b82f6',
+              data: {
+                id: tempId,
+                title: 'New Plot Point',
+                position: { x: position.x, y: position.y },
+                color: '#3b82f6',
+                actId: project.currentActId,
+                scenes: []
+              }
+            },
+            position: { x: position.x, y: position.y }
+          });
+          
+          // Immediately select the temp node for editing - get the first element from collection
+          const tempCyNode = tempCyNodes[0];
+          tempCyNode.select(); // Add selection (yellow ring)
+          // No centering animation - just select the node
+          setSelectedNode(tempCyNode);
+        }
+      }
+    });
+
+  }, [cy, project.currentActId]); // Re-run when cy instance or currentActId changes
+
   // Update graph when project data changes
   useEffect(() => {
     console.log('🏗️ Canvas: useEffect triggered', { 
@@ -569,7 +735,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       draggedNodesCount: draggedNodes.size,
       isInitialLoad,
       hasTriggeredInitialZoom,
-      plotPointsCount: project.plotPoints?.length || 0
+      plotPointsCount: project.plotPoints?.length || 0,
+      currentActId: project.currentActId,
+      currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+      timestamp: new Date().toLocaleTimeString()
     });
     
     if (!cy || isUndoing || draggedNodes.size > 0) return; // Skip rebuild during undo or while any nodes are being dragged
@@ -584,12 +753,41 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     cy.elements().remove();
     cy.add(elements);
     
-    // Use a gentler layout that doesn't reset the viewport as much
-    cy.layout({ 
-      name: 'preset',
-      fit: false, // Don't auto-fit to prevent jumping
-      padding: 50 
-    }).run();
+    // Check if we need to use automatic layout due to overlapping positions
+    const needsAutoLayout = elements.some(el => {
+      if (el.data.type === 'plot-point') {
+        const pos = el.position;
+        return !pos || pos.x === 0 || pos.y === 0;
+      }
+      return false;
+    });
+    
+    // Use appropriate layout based on whether positions are valid
+    if (needsAutoLayout) {
+      console.log('🔧 Canvas: Using automatic grid layout due to invalid positions');
+      cy.layout({ 
+        name: 'grid',
+        fit: false,
+        padding: 50,
+        rows: Math.ceil(Math.sqrt(elements.filter(el => el.data.type === 'plot-point').length)),
+        spacingFactor: 2.5,
+        avoidOverlap: true
+      }).run();
+    } else {
+      // Use preset layout with existing positions
+      cy.layout({ 
+        name: 'preset',
+        fit: false, // Don't auto-fit to prevent jumping
+        padding: 50 
+      }).run();
+      
+      // Trigger a resize to ensure Cytoscape adapts to container dimensions
+      setTimeout(() => {
+        if (cy) {
+          cy.resize();
+        }
+      }, 100);
+    }
 
     // Handle initial zoom-to-fit on first project load - only once!
     if (isInitialLoad && !hasTriggeredInitialZoom && elements.length > 0) {
@@ -631,7 +829,15 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     const edges: any[] = [];
 
     // Filter plot points to only show those from the current act
-    const currentActPlotPoints = project.plotPoints.filter(pp => pp.actId === project.currentActId);
+    let currentActPlotPoints = project.plotPoints.filter(pp => pp.actId === project.currentActId);
+    
+    // Fix overlapping plot points before rendering
+    if (currentActPlotPoints.length > 0) {
+      currentActPlotPoints = fixOverlappingPlotPoints(currentActPlotPoints);
+      
+      // Fix overlapping scenes for all plot points
+      currentActPlotPoints = fixOverlappingScenes(currentActPlotPoints);
+    }
 
     // Include all plot points from the current act
     currentActPlotPoints.forEach((plotPoint) => {
@@ -704,8 +910,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
               }
             });
 
-            // Add setting node
-            if (scene.setting) {
+            // Add setting node (only if it's not a default/placeholder setting)
+            if (scene.setting && scene.setting.id !== 'default-setting' && scene.setting.name !== 'Default Setting') {
               const settingId = `${scene.id}-setting-${scene.setting.id}`;
               nodes.push({
                 data: {
@@ -1244,6 +1450,19 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       setTempNode(null);
     }
     
+    // Ensure all plot points have valid positions before saving
+    const plotPointsWithValidPositions = updatedProject.plotPoints.map(pp => {
+      if (!pp.position || pp.position.x === 0 || pp.position.y === 0) {
+        // Use the temp node position if available, otherwise use a default grid position
+        const validPosition = tempNode?.position || { x: 200 + Math.random() * 400, y: 200 + Math.random() * 400 };
+        console.log(`🔧 Assigned valid position to plot point "${pp.title}": ${validPosition.x}, ${validPosition.y}`);
+        return { ...pp, position: validPosition };
+      }
+      return pp;
+    });
+    
+    const projectWithValidPositions = { ...updatedProject, plotPoints: plotPointsWithValidPositions };
+    
     // Check if scenes were added to any plot point and ensure it's expanded
     // This handles the case where scenes are added through direct editing in PropertyPanel
     if (selectedNode) {
@@ -1255,14 +1474,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
                      actualNode?.data?.id || actualNode?.data?.data?.id;
       
       if (nodeId) {
-        const plotPoint = updatedProject.plotPoints.find(pp => pp.id === nodeId);
+        const plotPoint = projectWithValidPositions.plotPoints.find(pp => pp.id === nodeId);
         if (plotPoint && plotPoint.scenes && plotPoint.scenes.length > 0) {
           setExpandedPlotPoint(nodeId);
         }
       }
     }
     
-    onProjectUpdate(updatedProject, immediate);
+    onProjectUpdate(projectWithValidPositions, immediate);
   };
 
   // Context menu placeholder (to be implemented)
