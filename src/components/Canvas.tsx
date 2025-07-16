@@ -462,6 +462,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     console.log('🔄 Canvas: Re-registering project-dependent event handlers', {
       currentActId: project.currentActId,
       currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+      currentZoom,
+      projectZoomLevel: project.currentZoomLevel,
       timestamp: new Date().toLocaleTimeString()
     });
 
@@ -547,7 +549,32 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         setSelectedNode(null);
         
         const position = event.position;
-        if (currentZoom === ZoomLevel.STORY_OVERVIEW && position) {
+        
+        // DEBUG: Always log canvas tap details
+        console.log('🖱️ Canvas: Canvas tap detected:', {
+          currentZoom,
+          expectedZoom: ZoomLevel.STORY_OVERVIEW,
+          zoomMatches: currentZoom === ZoomLevel.STORY_OVERVIEW,
+          projectZoomLevel: project.currentZoomLevel,
+          position: position ? { x: position.x, y: position.y } : null,
+          currentActId: project.currentActId,
+          timestamp: new Date().toLocaleTimeString()
+        });
+        
+        // Allow plot point creation from any zoom level when clicking empty canvas
+        if (position) {
+          // If not in STORY_OVERVIEW, switch to it first to allow plot point creation
+          if (currentZoom !== ZoomLevel.STORY_OVERVIEW) {
+            console.log('🔄 Canvas: Switching to STORY_OVERVIEW to enable plot point creation');
+            setCurrentZoom(ZoomLevel.STORY_OVERVIEW);
+            
+            // Update project state as well
+            onProjectUpdate({
+              ...project,
+              currentZoomLevel: ZoomLevel.STORY_OVERVIEW
+            });
+          }
+          
           // Debug: Log current act info with FRESH project state
           console.log('🎯 Canvas: Creating new plot point with FRESH project state:', {
             currentActId: project.currentActId,
@@ -608,8 +635,36 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       plotPointsCount: project.plotPoints?.length || 0,
       currentActId: project.currentActId,
       currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
+      tempNodeId: tempNode?.id || 'none',
       timestamp: new Date().toLocaleTimeString()
     });
+    
+    // Check if tempNode was successfully saved to backend and clear it
+    if (tempNode && (tempNode.id.startsWith('temp-') || tempNode.id.startsWith('plot-'))) {
+      // Look for a plot point that matches tempNode's position and title but has a database ID
+      const matchingSavedPlotPoint = project.plotPoints.find(pp => 
+        pp.title === tempNode.title && 
+        pp.position?.x === tempNode.position?.x && 
+        pp.position?.y === tempNode.position?.y &&
+        !pp.id.startsWith('temp-') && 
+        !pp.id.startsWith('plot-')
+      );
+      
+      if (matchingSavedPlotPoint) {
+        console.log('🆔 Canvas: Detected temp node was saved, clearing tempNode state:', {
+          tempId: tempNode.id,
+          savedId: matchingSavedPlotPoint.id,
+          title: tempNode.title
+        });
+        setTempNode(null);
+        
+        // Update selectedNode to reference the saved plot point if it was the selected temp node
+        if (selectedNode && selectedNode.id && selectedNode.id() === tempNode.id) {
+          // We'll let the normal update process handle re-selecting the node with new ID
+          setSelectedNode(null);
+        }
+      }
+    }
     
     if (!cy || isUndoing || draggedNodes.size > 0) return; // Skip rebuild during undo or while any nodes are being dragged
 

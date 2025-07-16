@@ -358,7 +358,13 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   }, [isProcessingSaveQueue]);
 
   const handleProjectUpdate = async (updatedProject: Project, immediate = false) => {
-    console.log('Project updated:', updatedProject);
+    console.log('🔄 ProjectWorkspace: Project updated:', {
+      projectId: updatedProject.id,
+      plotPointsCount: updatedProject.plotPoints.length,
+      plotPointIds: updatedProject.plotPoints.map(pp => ({ id: pp.id, title: pp.title })),
+      immediate,
+      timestamp: new Date().toLocaleTimeString()
+    });
     
     // Always update the current project state immediately
     setProject(updatedProject);
@@ -372,6 +378,14 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
   // Add project to save queue and process it
   const addToSaveQueue = (project: Project, immediate: boolean) => {
+    console.log('🔄 ProjectWorkspace: Adding to save queue:', {
+      projectId: project.id,
+      plotPointsCount: project.plotPoints.length,
+      temporaryPlotPoints: project.plotPoints.filter(pp => pp.id.startsWith('temp-') || pp.id.startsWith('plot-')),
+      immediate,
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
     // Clear any existing autosave timeout since we're queuing this save
     if (autoSaveTimeoutId) {
       clearTimeout(autoSaveTimeoutId);
@@ -380,9 +394,20 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
     // Simply replace the queue with the latest project (no need for complex queue management)
     setSaveQueue([project]);
+    
+    // IMPORTANT: Update ref immediately for synchronous access
+    saveQueueRef.current = [project];
+
+    console.log('🔄 ProjectWorkspace: Save queue updated, triggering processing:', {
+      immediate,
+      queueLength: 1,
+      refLength: saveQueueRef.current.length,
+      timestamp: new Date().toLocaleTimeString()
+    });
 
     // Process queue immediately or with delay
     if (immediate) {
+      console.log('🔄 ProjectWorkspace: Processing queue immediately...');
       processSaveQueue();
     } else {
       // Schedule queue processing with delay
@@ -395,6 +420,13 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
   // Process the save queue sequentially
   const processSaveQueue = async () => {
+    console.log('🔄 ProjectWorkspace: processSaveQueue called', {
+      isProcessing: isProcessingSaveQueueRef.current,
+      saveQueueRefLength: saveQueueRef.current.length,
+      saveQueueStateLength: saveQueue.length,
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
     if (isProcessingSaveQueueRef.current) {
       console.log('Save queue already being processed, skipping...');
       return;
@@ -730,6 +762,21 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
       await syncPlotPointsAndScenes(updatedProject);
 
       console.log('All project content synced successfully');
+      
+      // Refresh project from backend to get updated IDs for any created content
+      console.log('🔄 ProjectWorkspace: Refreshing project from backend to get updated IDs...');
+      const backendProject = await ProjectApiService.getProject(updatedProject.id);
+      
+      if (backendProject) {
+        // Convert backend project to frontend format with all updated IDs
+        const refreshedProject = await convertBackendProject(backendProject);
+        console.log('✅ ProjectWorkspace: Project refreshed with real IDs', {
+          plotPointsCount: refreshedProject.plotPoints.length,
+          plotPointIds: refreshedProject.plotPoints.map((pp: any) => ({ id: pp.id, title: pp.title }))
+        });
+        setProject(refreshedProject);
+        setLastSavedProject({ ...refreshedProject });
+      }
     } catch (error) {
       console.error('Failed to sync project content:', error);
       // TODO: Add user notification for sync failures
@@ -883,6 +930,12 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
 
   // Sync plot points and their scenes with backend
   const syncPlotPointsAndScenes = async (project: Project) => {
+    console.log('🔄 ProjectWorkspace: Starting syncPlotPointsAndScenes', {
+      projectId: project.id,
+      totalPlotPoints: project.plotPoints.length,
+      temporaryPlotPoints: project.plotPoints.filter(pp => pp.id.startsWith('temp-') || pp.id.startsWith('plot-')).length
+    });
+    
     try {
       const frontendPlotPoints = project.plotPoints;
 
@@ -894,7 +947,7 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         
         if (isTemporary) {
           try {
-            console.log(`Creating plot point: ${plotPoint.title} with actId: ${plotPoint.actId}`);
+            console.log(`🔧 ProjectWorkspace: Creating plot point: ${plotPoint.title} with actId: ${plotPoint.actId}, tempId: ${plotPoint.id}`);
             // Try to create the plot point
             const createdPlotPoint = await ProjectApiService.createPlotPoint(project.id, plotPoint.actId, {
               actId: plotPoint.actId,
@@ -905,9 +958,9 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
             
             if (createdPlotPoint && createdPlotPoint.id) {
               plotPointId = createdPlotPoint.id;
-              console.log(`Created plot point: ${plotPoint.title} with ID: ${plotPointId}`);
+              console.log(`✅ ProjectWorkspace: Created plot point: ${plotPoint.title} - OLD ID: ${plotPoint.id} -> NEW ID: ${plotPointId}`);
             } else {
-              console.error('Created plot point response missing id:', createdPlotPoint);
+              console.error('❌ ProjectWorkspace: Created plot point response missing id:', createdPlotPoint);
               continue;
             }
           } catch (error) {
