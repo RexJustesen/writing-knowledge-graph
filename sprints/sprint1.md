@@ -23,13 +23,13 @@ Transform the current basic navigation into a powerful, fast search-driven inter
 **So that** I can quickly find characters, plot points, or scenes without remembering which project they're in
 
 #### Acceptance Criteria
-- [ ] Search input appears in header/toolbar on all screens
-- [ ] Search returns results from all projects user has access to
-- [ ] Results categorized by: Projects, Characters, Plot Points, Scenes, Acts
-- [ ] Clicking result navigates directly to that element (opens project if needed)
-- [ ] Search is case-insensitive and supports partial matching
-- [ ] Recent searches are remembered (last 10)
-- [ ] Search works with minimum 2 characters typed
+- [x] Search input appears in header/toolbar on all screens
+- [x] Search returns results from all projects user has access to
+- [x] Results categorized by: Projects, Characters, Plot Points, Scenes, Acts
+- [x] Clicking result navigates directly to that element (opens project if needed)
+- [x] Search is case-insensitive and supports partial matching
+- [x] Recent searches are remembered (last 10)
+- [x] Search works with minimum 2 characters typed
 
 #### Technical Implementation
 ```typescript
@@ -55,12 +55,12 @@ const searchAllProjects = async (query: string): Promise<SearchResult[]>
 - `SearchResultItem.tsx` - Individual result with icon and navigation
 
 #### Definition of Done
-- [ ] Search input visible on homepage and project workspace
-- [ ] Returns results within 500ms for typical query
-- [ ] Navigates correctly to found elements
-- [ ] Works across all user's projects
-- [ ] Mobile responsive design
-- [ ] Unit tests cover search functionality
+- [x] Search input visible on homepage and project workspace
+- [x] Returns results within 500ms for typical query
+- [x] Navigates correctly to found elements
+- [x] Works across all user's projects
+- [x] Mobile responsive design
+- [x] Unit tests cover search functionality
 
 ---
 
@@ -70,14 +70,14 @@ const searchAllProjects = async (query: string): Promise<SearchResult[]>
 **So that** I can maintain my creative flow without reaching for the mouse
 
 #### Acceptance Criteria
-- [ ] `Ctrl/Cmd + 1` switches to Act I
-- [ ] `Ctrl/Cmd + 2` switches to Act II  
-- [ ] `Ctrl/Cmd + 3` switches to Act III
-- [ ] `Ctrl/Cmd + 4` switches to Act IV (if exists)
-- [ ] `Ctrl/Cmd + 5` switches to Act V (if exists)
-- [ ] Shortcuts work when focus is anywhere in the application
-- [ ] Visual indicator shows current act clearly
-- [ ] Help tooltip shows available shortcuts
+- [x] `Ctrl/Cmd + 1` switches to Act I
+- [x] `Ctrl/Cmd + 2` switches to Act II  
+- [x] `Ctrl/Cmd + 3` switches to Act III
+- [x] `Ctrl/Cmd + 4` switches to Act IV (if exists)
+- [x] `Ctrl/Cmd + 5` switches to Act V (if exists)
+- [x] Shortcuts work when focus is anywhere in the application
+- [x] Visual indicator shows current act clearly
+- [x] Help tooltip shows available shortcuts
 
 #### Technical Implementation
 ```typescript
@@ -96,11 +96,11 @@ useEffect(() => {
 ```
 
 #### Definition of Done
-- [ ] All shortcuts work consistently
-- [ ] No conflicts with browser shortcuts
-- [ ] Visual feedback when switching acts
-- [ ] Works on Windows, Mac, and Linux
-- [ ] Documented in help system
+- [x] All shortcuts work consistently
+- [x] No conflicts with browser shortcuts
+- [x] Visual feedback when switching acts
+- [x] Works on Windows, Mac, and Linux
+- [x] Documented in help system
 
 ---
 
@@ -110,13 +110,13 @@ useEffect(() => {
 **So that** I can navigate large projects efficiently
 
 #### Acceptance Criteria
-- [ ] `Ctrl/Cmd + K` opens quick navigation command palette
-- [ ] Palette shows: Recent items, All characters, All plot points by act
-- [ ] Type-ahead filtering as user types
-- [ ] Arrow keys navigate through options
-- [ ] Enter key selects and navigates to item
-- [ ] ESC key closes palette
-- [ ] Shows keyboard shortcut hints in palette
+- [x] `Ctrl/Cmd + K` opens quick navigation command palette
+- [x] Palette shows: Recent items, All characters, All plot points by act
+- [x] Type-ahead filtering as user types
+- [x] Arrow keys navigate through options
+- [x] Enter key selects and navigates to item
+- [x] ESC key closes palette
+- [x] Shows keyboard shortcut hints in palette
 
 #### Technical Implementation
 ```typescript
@@ -138,11 +138,11 @@ const QuickNavPalette = () => {
 ```
 
 #### Definition of Done
-- [ ] Command palette opens/closes smoothly
-- [ ] Filtering works in real-time
-- [ ] Navigation is keyboard-accessible
-- [ ] Shows relevant context (act, character type, etc.)
-- [ ] Performance handles 100+ items smoothly
+- [x] Command palette opens/closes smoothly
+- [x] Filtering works in real-time
+- [x] Navigation is keyboard-accessible
+- [x] Shows relevant context (act, character type, etc.)
+- [x] Performance handles 100+ items smoothly
 
 ---
 
@@ -152,13 +152,13 @@ const QuickNavPalette = () => {
 **So that** I can quickly return to things I was just working on
 
 #### Acceptance Criteria
-- [ ] Collapsible sidebar shows last 15 accessed items
-- [ ] Items include: characters, plot points, scenes, acts
-- [ ] Shows timestamp of last access (e.g., "2 minutes ago")
-- [ ] One-click navigation to any recent item
-- [ ] Recent items persist across browser sessions
-- [ ] Clear option to empty recent history
-- [ ] Drag to reorder recent items
+- [x] Collapsible sidebar shows last 15 accessed items
+- [x] Items include: characters, plot points, scenes, acts
+- [x] Shows timestamp of last access (e.g., "2 minutes ago")
+- [x] One-click navigation to any recent item
+- [x] Recent items persist across browser sessions
+- [x] Clear option to empty recent history
+- [x] Drag to reorder recent items
 
 #### Technical Implementation
 ```typescript
@@ -182,11 +182,11 @@ class RecentItemsService {
 ```
 
 #### Definition of Done
-- [ ] Sidebar toggles open/closed smoothly
-- [ ] Items are clickable and navigate correctly
-- [ ] Recent history persists between sessions
-- [ ] Performance handles frequent updates
-- [ ] Visual design matches app theme
+- [x] Sidebar toggles open/closed smoothly
+- [x] Items are clickable and navigate correctly
+- [x] Recent history persists between sessions
+- [x] Performance handles frequent updates
+- [x] Visual design matches app theme
 
 ---
 
@@ -196,13 +196,13 @@ class RecentItemsService {
 **So that** I can find exactly what I'm looking for quickly
 
 #### Acceptance Criteria
-- [ ] Filter buttons: All, Characters, Plot Points, Scenes, Projects
-- [ ] Project-specific search toggle (search only current project)
-- [ ] Visual indicators show active filters
-- [ ] Filter state persists during session
-- [ ] Results update immediately when filters change
-- [ ] Shows result count per filter type
-- [ ] Clear all filters option
+- [x] Filter buttons: All, Characters, Plot Points, Scenes, Projects
+- [x] Project-specific search toggle (search only current project)
+- [x] Visual indicators show active filters
+- [x] Filter state persists during session
+- [x] Results update immediately when filters change
+- [x] Shows result count per filter type
+- [x] Clear all filters option
 
 #### Technical Implementation
 ```typescript
@@ -220,10 +220,10 @@ const searchWithFilters = async (
 ```
 
 #### Definition of Done
-- [ ] All filter combinations work correctly
-- [ ] UI clearly shows what filters are active
-- [ ] Performance remains fast with filters applied
-- [ ] Intuitive user interface for filter selection
+- [x] All filter combinations work correctly
+- [x] UI clearly shows what filters are active
+- [x] Performance remains fast with filters applied
+- [x] Intuitive user interface for filter selection
 
 ---
 
@@ -257,20 +257,20 @@ const searchWithFilters = async (
 ## 🧪 Testing Strategy
 
 ### Unit Tests
-- [ ] Search functionality with various inputs
-- [ ] Keyboard shortcut event handling
-- [ ] Filter combinations
-- [ ] Recent items tracking
+- [x] Search functionality with various inputs
+- [x] Keyboard shortcut event handling
+- [x] Filter combinations
+- [x] Recent items tracking
 
 ### Integration Tests
-- [ ] Cross-project search results
-- [ ] Navigation between projects/acts
-- [ ] Performance with large datasets
+- [x] Cross-project search results
+- [x] Navigation between projects/acts
+- [x] Performance with large datasets
 
 ### User Acceptance Tests
-- [ ] Writers can find any story element in under 10 seconds
-- [ ] Keyboard shortcuts work intuitively
-- [ ] Search results are relevant and comprehensive
+- [x] Writers can find any story element in under 10 seconds
+- [x] Keyboard shortcuts work intuitively
+- [x] Search results are relevant and comprehensive
 
 ---
 
