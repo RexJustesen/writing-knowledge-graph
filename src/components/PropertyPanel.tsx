@@ -44,41 +44,31 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
     character: null
   });
 
-  // Early return if no project is loaded
-  if (!project) {
-    return (
-      <div className="bg-white rounded-lg shadow-lg w-80 max-h-[calc(100vh-8rem)] overflow-auto p-4">
-        <div className="text-center text-gray-500">
-          <p>No project loaded</p>
-        </div>
-      </div>
-    );
-  }
-
   // Initialize form data when selectedNode changes
   useEffect(() => {
-    if (selectedNode) {
-      // Handle Cytoscape Collection - extract first element if it's a collection
-      let actualNode = selectedNode;
-      if (selectedNode.length !== undefined && selectedNode.length > 0) {
-        actualNode = selectedNode[0];
-      }
+    if (!project || !selectedNode) return;
+    
+    // Handle Cytoscape Collection - extract first element if it's a collection
+    let actualNode = selectedNode;
+    if (selectedNode.length !== undefined && selectedNode.length > 0) {
+      actualNode = selectedNode[0];
+    }
 
-      // Get the node ID to fetch current data from project
-      let nodeId;
-      if (typeof actualNode.id === 'function') {
-        nodeId = actualNode.id();
-      } else if (actualNode?.data?.id) {
-        nodeId = actualNode.data.id;
-      } else if (actualNode?.data?.data?.id) {
-        nodeId = actualNode.data.data.id;
-      }
+    // Get the node ID to fetch current data from project
+    let nodeId;
+    if (typeof actualNode.id === 'function') {
+      nodeId = actualNode.id();
+    } else if (actualNode?.data?.id) {
+      nodeId = actualNode.data.id;
+    } else if (actualNode?.data?.data?.id) {
+      nodeId = actualNode.data.data.id;
+    }
 
-      // For temporary nodes, use tempNode data
-      if (nodeId && nodeId.startsWith('temp-') && tempNode) {
-        setFormData({ ...tempNode });
-        setCurrentScenes(tempNode.scenes || []);
-      } else if (nodeId) {
+    // For temporary nodes, use tempNode data
+    if (nodeId && nodeId.startsWith('temp-') && tempNode) {
+      setFormData({ ...tempNode });
+      setCurrentScenes(tempNode.scenes || []);
+    } else if (nodeId) {
         // For permanent nodes, get fresh data from project to reflect any deletions
         const currentPlotPoint = project.plotPoints.find(pp => pp.id === nodeId);
         if (currentPlotPoint) {
@@ -109,8 +99,18 @@ const PropertyPanel: React.FC<PropertyPanelProps> = ({
           setCurrentScenes([]); // Reset scenes for non-plot-point nodes
         }
       }
-    }
   }, [selectedNode, tempNode, project]); // Add project as dependency to refresh when it changes
+
+  // Early returns after hooks
+  if (!project) {
+    return (
+      <div className="bg-white rounded-lg shadow-lg w-80 max-h-[calc(100vh-8rem)] overflow-auto p-4">
+        <div className="text-center text-gray-500">
+          <p>No project loaded</p>
+        </div>
+      </div>
+    );
+  }
 
   if (!selectedNode) return null;
 

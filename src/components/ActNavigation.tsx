@@ -481,7 +481,7 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
   };
 
   const handleDuplicate = (act: Act) => {
-    let baseName = act.name;
+    const baseName = act.name;
     let counter = 1;
     let newName = `${baseName} Copy`;
     

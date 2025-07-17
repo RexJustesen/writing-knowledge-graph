@@ -51,7 +51,7 @@ export default function RegisterPage() {
     try {
       await register(formData.username, formData.email, formData.password);
       router.push('/');
-    } catch (err) {
+    } catch (error) {
       // Error is handled by AuthContext
     } finally {
       setIsLoading(false);

@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import cytoscape, { Core } from 'cytoscape';
-import { PlotPoint, Scene, ZoomLevel, Project, CytoscapeNodeData, CytoscapeEdgeData, QuickTemplate } from '@/types/story';
+import { PlotPoint, ZoomLevel, Project, QuickTemplate } from '@/types/story';
 import PropertyPanel from './PropertyPanel';
 import QuickTemplateMenu from './QuickTemplateMenu';
 import { TemplateService } from '@/services/templateService';
@@ -218,20 +218,6 @@ const fixOverlappingScenes = (plotPoints: PlotPoint[]): PlotPoint[] => {
   });
   
   return updatedPlotPoints;
-};
-
-// Helper function to calculate proper scene position (enhanced version)
-const calculateScenePositionSafe = (
-  plotPointPos: { x: number; y: number }, 
-  sceneIndex: number, 
-  totalScenes: number = 1
-): { x: number; y: number } => {
-  const radius = 120;
-  const angle = (sceneIndex * 2 * Math.PI) / Math.max(totalScenes, 1);
-  return {
-    x: plotPointPos.x + radius * Math.cos(angle),
-    y: plotPointPos.y + radius * Math.sin(angle)
-  };
 };
 
 interface CanvasProps {
