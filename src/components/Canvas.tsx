@@ -1692,7 +1692,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   };
 
   return (
-    <div className="w-full h-full relative">
+    <div className="h-full relative">
       <div ref={cyRef} className="w-full h-full bg-gray-50" />
       
       {/* Undo button */}

@@ -19,6 +19,7 @@ import { NavigationService, RecentItem } from '@/services/navigationService';
 import { SearchResult } from '@/services/searchService';
 import { TemplateService } from '@/services/templateService';
 import { useProjectStore, selectProject, selectIsLoading, selectError } from '@/stores/projectStore';
+import { useSidebarState } from '@/hooks/useSidebarState';
 
 // Types for suggestion handling
 interface PlotPointSuggestion {
@@ -110,6 +111,9 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
   const [showRecentItems, setShowRecentItems] = useState(false);
   const canvasRef = React.useRef<CanvasHandle>(null);
   const { user, logout } = useAuth();
+  
+  // Persistent sidebar state
+  const { isCollapsed: isSidebarCollapsed, isLoaded: sidebarStateLoaded, toggleSidebar } = useSidebarState();
 
   // Save status tracking
   const [isSyncing, setIsSyncing] = useState(false);
@@ -742,25 +746,93 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
             onZoomToFit={handleZoomToFit}
           />
           
-          <div className="flex-1 overflow-hidden flex">
-            <Canvas 
-              project={project}
-              onProjectUpdate={handleProjectUpdate}
-              ref={canvasRef}
-            />
+          <div className="flex-1 overflow-hidden flex" style={{ width: '100%' }}>
+            <div className="flex-1 min-w-0 h-full relative" style={{ 
+              width: `calc(100% - ${sidebarStateLoaded && isSidebarCollapsed ? '48px' : '384px'})` 
+            }}>
+              <Canvas 
+                project={project}
+                onProjectUpdate={handleProjectUpdate}
+                ref={canvasRef}
+              />
+            </div>
             
-            {/* Sprint 2: Right Sidebar with Suggestions and Validation */}
-            <div className="w-96 bg-white border-l border-gray-200 overflow-y-auto p-4 space-y-4">
-              <PlotPointSuggestions
-                project={project}
-                currentActId={project.currentActId}
-                onSuggestionAccept={handleSuggestionAccept}
-              />
+            {/* Sprint 2: Collapsible Right Sidebar with Suggestions and Validation */}
+            <div 
+              className={`relative bg-white border-l border-gray-200 transition-all duration-300 ease-in-out ${
+                sidebarStateLoaded && isSidebarCollapsed ? 'w-12' : 'w-96'
+              }`}
+              style={{
+                width: sidebarStateLoaded && isSidebarCollapsed ? '48px' : '384px',
+                minWidth: sidebarStateLoaded && isSidebarCollapsed ? '48px' : '384px',
+                maxWidth: sidebarStateLoaded && isSidebarCollapsed ? '48px' : '384px',
+                flexShrink: 0,
+                flexGrow: 0,
+                flexBasis: sidebarStateLoaded && isSidebarCollapsed ? '48px' : '384px'
+              }}
+              onTransitionEnd={() => {
+                const element = document.querySelector('[data-sidebar]');
+                console.log('🎛️ Sidebar transition ended', {
+                  collapsed: isSidebarCollapsed,
+                  computedWidth: element ? window.getComputedStyle(element).width : 'not found'
+                });
+              }}
+              data-sidebar="true"
+            >
+              {/* Sidebar Toggle Button */}
+              {sidebarStateLoaded && (
+                <button
+                  onClick={toggleSidebar}
+                  className={`absolute top-4 z-10 p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors duration-200 border border-gray-300 shadow-sm ${
+                    isSidebarCollapsed ? 'left-1' : 'left-2'
+                  }`}
+                  title={isSidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+                >
+                  <svg 
+                    className={`w-4 h-4 text-gray-600 transition-transform duration-300 ${
+                      isSidebarCollapsed ? 'rotate-180' : ''
+                    }`} 
+                    fill="none" 
+                    stroke="currentColor" 
+                    viewBox="0 0 24 24"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
               
-              <StoryValidationPanel
-                project={project}
-                onSuggestionAccept={handleValidationSuggestionAccept}
-              />
+              {/* Sidebar Content */}
+              <div className={`h-full transition-all duration-300 ${
+                !sidebarStateLoaded || isSidebarCollapsed 
+                  ? 'opacity-0 pointer-events-none' 
+                  : 'opacity-100'
+              } ${isSidebarCollapsed ? '' : 'overflow-y-auto p-4 space-y-4'}`}>
+                {(!isSidebarCollapsed && sidebarStateLoaded) && (
+                  <>
+                    <PlotPointSuggestions
+                      project={project}
+                      currentActId={project.currentActId}
+                      onSuggestionAccept={handleSuggestionAccept}
+                    />
+                    
+                    <StoryValidationPanel
+                      project={project}
+                      onSuggestionAccept={handleValidationSuggestionAccept}
+                    />
+                  </>
+                )}
+              </div>
+              
+              {/* Collapsed State Indicator */}
+              {sidebarStateLoaded && isSidebarCollapsed && (
+                <div className="absolute inset-y-0 left-12 flex flex-col items-center justify-center space-y-4 pointer-events-none">
+                  <div className="w-px h-8 bg-gray-300"></div>
+                  <div className="text-xs text-gray-400 transform -rotate-90 whitespace-nowrap">
+                    Story Tools
+                  </div>
+                  <div className="w-px h-8 bg-gray-300"></div>
+                </div>
+              )}
             </div>
           </div>
         </div>
