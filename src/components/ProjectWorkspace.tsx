@@ -45,16 +45,23 @@ const generateUniquePosition = (existingPlotPoints: any[]): { x: number; y: numb
   const MIN_DISTANCE = 150;
   const SEARCH_RADIUS = 250;
 
+  console.log('🎯 generateUniquePosition: Input plot points:', existingPlotPoints.length, existingPlotPoints);
+
   const existingPositions = existingPlotPoints
     .map(pp => pp.position)
     .filter(pos => pos && typeof pos.x === 'number' && typeof pos.y === 'number');
 
+  console.log('🎯 generateUniquePosition: Valid positions found:', existingPositions.length, existingPositions);
+
   if (existingPositions.length === 0) {
+    console.log('🎯 generateUniquePosition: No existing positions, using default position');
     return { x: 300, y: 200 };
   }
 
   const centerX = existingPositions.reduce((sum, pos) => sum + pos.x, 0) / existingPositions.length;
   const centerY = existingPositions.reduce((sum, pos) => sum + pos.y, 0) / existingPositions.length;
+
+  console.log('🎯 generateUniquePosition: Center of mass calculated:', { centerX, centerY });
 
   for (let radius = MIN_DISTANCE; radius <= SEARCH_RADIUS; radius += 50) {
     for (let angle = 0; angle < 2 * Math.PI; angle += Math.PI / 8) {
@@ -67,15 +74,18 @@ const generateUniquePosition = (existingPlotPoints: any[]): { x: number; y: numb
       });
 
       if (!hasConflict) {
+        console.log('🎯 generateUniquePosition: Found good position:', { x: Math.round(x), y: Math.round(y) });
         return { x: Math.round(x), y: Math.round(y) };
       }
     }
   }
 
-  return {
+  const fallbackPosition = {
     x: Math.round(centerX + Math.random() * 400 - 200),
     y: Math.round(centerY + Math.random() * 400 - 200)
   };
+  console.log('🎯 generateUniquePosition: Using fallback position:', fallbackPosition);
+  return fallbackPosition;
 };
 
 // Component Props
@@ -407,15 +417,13 @@ const ProjectWorkspace: React.FC<ProjectWorkspaceProps> = ({ projectId, onBackTo
         actName: targetAct.name 
       });
 
-      // Simple position calculation
-      const existingPositions = project.plotPoints
-        .filter(pp => pp.actId === targetActId)
-        .map(pp => pp.position);
-      
-      const basePosition = { x: 200, y: 200 };
-      const position = existingPositions.length > 0 ? 
-        { x: basePosition.x, y: basePosition.y + (existingPositions.length * 150) } :
-        basePosition;
+      // Use the smart position generation algorithm for better UX
+      const actPlotPoints = project.plotPoints.filter(pp => pp.actId === targetActId);
+      const position = generateUniquePosition(actPlotPoints);
+      console.log('🎯 Zustand: Generated smart position for validation suggestion:', { 
+        position, 
+        existingPlotPointsInAct: actPlotPoints.length 
+      });
 
       // Create plot point using template service
       const templateData = TemplateService.applyQuickTemplate(
