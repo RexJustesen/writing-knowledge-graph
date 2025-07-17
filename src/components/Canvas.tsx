@@ -142,7 +142,12 @@ const fixOverlappingScenes = (plotPoints: PlotPoint[]): PlotPoint[] => {
     
     plotPoint.scenes.forEach(scene => {
       const position = scene.position || { x: 0, y: 0 };
-      const isValidPosition = position.x > 0 && position.y > 0;
+      // Only consider a position invalid if it's undefined/null or has NaN values
+      const isValidPosition = scene.position && 
+                              typeof scene.position.x === 'number' && 
+                              typeof scene.position.y === 'number' &&
+                              !isNaN(scene.position.x) && 
+                              !isNaN(scene.position.y);
       
       if (!isValidPosition) {
         // Invalid position - group under "invalid"
@@ -183,7 +188,12 @@ const fixOverlappingScenes = (plotPoints: PlotPoint[]): PlotPoint[] => {
     const updatedScenes = plotPoint.scenes.map((scene) => {
       // Check if this scene is in a problematic group
       const scenePosition = scene.position || { x: 0, y: 0 };
-      const isValidPosition = scenePosition.x > 0 && scenePosition.y > 0;
+      // Only consider a position invalid if it's undefined/null or has NaN values
+      const isValidPosition = scene.position && 
+                              typeof scene.position.x === 'number' && 
+                              typeof scene.position.y === 'number' &&
+                              !isNaN(scene.position.x) && 
+                              !isNaN(scene.position.y);
       
       let isProblematic = false;
       if (!isValidPosition) {
@@ -240,7 +250,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const [undoStack, setUndoStack] = useState<Project[]>([]); // For undo functionality
   const [undoExpandedStates, setUndoExpandedStates] = useState<(string | null)[]>([]); // Track expanded states for undo
   const [isUndoing, setIsUndoing] = useState(false); // Flag to prevent automatic rebuild during undo
-  const [draggedNodes, setDraggedNodes] = useState<Map<string, { x: number; y: number }>>(new Map()); // Track currently dragged nodes
+  const draggedNodesRef = useRef<Map<string, { x: number; y: number }>>(new Map()); // Track currently dragged nodes using ref
+  const currentActIdRef = useRef<string>(project.currentActId); // Track current act ID to avoid closure issues
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first project load
   const [hasTriggeredInitialZoom, setHasTriggeredInitialZoom] = useState(false); // Prevent double initial zoom
   const lastFocusedElementRef = useRef<string | null>(null); // Track last focused element to prevent repeated focusing
@@ -278,6 +289,23 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     }
   }, [project.id, isInitialLoad, hasTriggeredInitialZoom]); // Only run when project initially loads
 
+  // Clear expanded plot point and selection when switching acts (since they might be in different act)
+  useEffect(() => {
+    console.log(`🎭 Act changed to ${project.currentActId}, clearing expanded plot point state and selection`);
+    currentActIdRef.current = project.currentActId; // Update the ref to current act
+    setExpandedPlotPoint(null);
+    setSelectedNode(null); // Clear the selected node to close PropertyPanel
+    
+    // Clear any focused element (selected plot point or scene) when switching acts
+    if (project.focusedElementId) {
+      console.log(`🎯 Clearing focused element ${project.focusedElementId} due to act change`);
+      onProjectUpdate({
+        ...project,
+        focusedElementId: undefined
+      });
+    }
+  }, [project.currentActId]);
+
   // Sync currentZoom state with project's currentZoomLevel
   useEffect(() => {
     setCurrentZoom(project.currentZoomLevel);
@@ -285,22 +313,138 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
   // Function to update plot point position in project data
   const updatePlotPointPosition = (plotPointId: string, newPosition: { x: number; y: number }) => {
+    updatePlotPointPositionWithProject(plotPointId, newPosition, project);
+  };
+
+  // Function to update plot point position with explicit project state (to avoid closure issues)
+  const updatePlotPointPositionWithProject = (plotPointId: string, newPosition: { x: number; y: number }, projectState: Project) => {
+    console.log(`🎯 updatePlotPointPosition called for ${plotPointId}`, {
+      newPosition,
+      currentActId: projectState.currentActId,
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
+    // Find the plot point and calculate the movement delta
+    const plotPoint = projectState.plotPoints.find(pp => pp.id === plotPointId);
+    if (!plotPoint || !plotPoint.position) {
+      console.warn(`Plot point ${plotPointId} not found or has no position`);
+      return;
+    }
+    
+    console.log(`📊 Delta calculation:`, {
+      plotPointId,
+      oldPosition: plotPoint.position,
+      newPosition,
+      deltaX: newPosition.x - plotPoint.position.x,
+      deltaY: newPosition.y - plotPoint.position.y
+    });
+    
+    const deltaX = newPosition.x - plotPoint.position.x;
+    const deltaY = newPosition.y - plotPoint.position.y;
+    
     const updatedProject = {
-      ...project,
-      plotPoints: project.plotPoints.map(pp => 
-        pp.id === plotPointId 
-          ? { ...pp, position: newPosition }
-          : pp
-      ),
+      ...projectState,
+      plotPoints: projectState.plotPoints.map(pp => {
+        if (pp.id === plotPointId) {
+          // Update the plot point position and move all its scenes relatively
+          const updatedScenes = pp.scenes.map(scene => {
+            if (scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number') {
+              // Move scene relative to plot point movement
+              return {
+                ...scene,
+                position: {
+                  x: scene.position.x + deltaX,
+                  y: scene.position.y + deltaY
+                }
+              };
+            }
+            return scene; // Keep scenes without valid positions unchanged
+          });
+          
+          return { 
+            ...pp, 
+            position: newPosition,
+            scenes: updatedScenes
+          };
+        }
+        return pp;
+      }),
       lastModified: new Date()
     };
     
-    console.log(`Updated plot point ${plotPointId} position to`, newPosition);
+    console.log(`✅ Updated plot point ${plotPointId} position to`, newPosition);
+    console.log(`🚚 Moved ${plotPoint.scenes.filter(s => s.position).length} scenes relatively by delta (${deltaX}, ${deltaY})`);
+    console.log(`🔄 About to call onProjectUpdate with currentActId: ${updatedProject.currentActId}`);
+    onProjectUpdate(updatedProject); // This will trigger autosave
+  };
+
+  // Function to update plot point position while preserving current act from ref
+  const updatePlotPointPositionWithCurrentAct = (plotPointId: string, newPosition: { x: number; y: number }, currentActId: string) => {
+    console.log(`🎯 updatePlotPointPositionWithCurrentAct called for ${plotPointId}`, {
+      newPosition,
+      currentActId,
+      timestamp: new Date().toLocaleTimeString()
+    });
+    
+    // Find the plot point and calculate the movement delta
+    const plotPoint = project.plotPoints.find(pp => pp.id === plotPointId);
+    if (!plotPoint || !plotPoint.position) {
+      console.warn(`Plot point ${plotPointId} not found or has no position`);
+      return;
+    }
+    
+    console.log(`📊 Delta calculation:`, {
+      plotPointId,
+      oldPosition: plotPoint.position,
+      newPosition,
+      deltaX: newPosition.x - plotPoint.position.x,
+      deltaY: newPosition.y - plotPoint.position.y
+    });
+    
+    const deltaX = newPosition.x - plotPoint.position.x;
+    const deltaY = newPosition.y - plotPoint.position.y;
+    
+    const updatedProject = {
+      ...project,
+      currentActId, // Use the act ID from the ref, not from potentially stale project state
+      plotPoints: project.plotPoints.map(pp => {
+        if (pp.id === plotPointId) {
+          // Update the plot point position and move all its scenes relatively
+          const updatedScenes = pp.scenes.map(scene => {
+            if (scene.position && typeof scene.position.x === 'number' && typeof scene.position.y === 'number') {
+              // Move scene relative to plot point movement
+              return {
+                ...scene,
+                position: {
+                  x: scene.position.x + deltaX,
+                  y: scene.position.y + deltaY
+                }
+              };
+            }
+            return scene; // Keep scenes without valid positions unchanged
+          });
+          
+          return { 
+            ...pp, 
+            position: newPosition,
+            scenes: updatedScenes
+          };
+        }
+        return pp;
+      }),
+      lastModified: new Date()
+    };
+    
+    console.log(`✅ Updated plot point ${plotPointId} position to`, newPosition);
+    console.log(`🚚 Moved ${plotPoint.scenes.filter(s => s.position).length} scenes relatively by delta (${deltaX}, ${deltaY})`);
+    console.log(`🔄 About to call onProjectUpdate with preserved currentActId: ${updatedProject.currentActId}`);
     onProjectUpdate(updatedProject); // This will trigger autosave
   };
 
   // Function to update scene position in project data
   const updateScenePosition = (sceneId: string, newPosition: { x: number; y: number }) => {
+    console.log(`🎯 updateScenePosition called for scene ${sceneId}`, newPosition);
+    
     const updatedProject = {
       ...project,
       plotPoints: project.plotPoints.map(pp => ({
@@ -314,7 +458,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       lastModified: new Date()
     };
     
-    console.log(`Updated scene ${sceneId} position to`, newPosition);
+    console.log(`✅ Updated scene ${sceneId} position to`, newPosition);
+    console.log(`🔄 Calling onProjectUpdate for scene position change`);
     onProjectUpdate(updatedProject); // This will trigger autosave
   };
 
@@ -441,15 +586,33 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       const node = event.target;
       const nodeId = node.id();
       const position = node.position();
+      const nodeType = node.data('type');
       
-      // Add this node to the dragged nodes map
-      setDraggedNodes(prev => {
-        const newMap = new Map(prev);
-        newMap.set(nodeId, { x: position.x, y: position.y });
-        return newMap;
+      // Store initial position but don't add to dragged map yet (wait for actual movement)
+      const initialPosition = { x: position.x, y: position.y };
+      
+      console.log(`🎯 Started grabbing ${nodeType} node ${nodeId} from position`, position);
+      
+      // Add movement listener to detect if this is a real drag vs just a click
+      const onDrag = () => {
+        const currentPos = node.position();
+        const moved = Math.abs(currentPos.x - initialPosition.x) > 5 || 
+                     Math.abs(currentPos.y - initialPosition.y) > 5;
+        
+        if (moved && !draggedNodesRef.current.has(nodeId)) {
+          console.log(`🚚 Node ${nodeId} started moving, adding to drag map`);
+          draggedNodesRef.current.set(nodeId, initialPosition);
+          console.log(`📋 draggedNodesRef now contains:`, Array.from(draggedNodesRef.current.keys()));
+        }
+      };
+      
+      // Listen for drag events
+      node.on('drag', onDrag);
+      
+      // Clean up the drag listener when dragging ends
+      node.one('free', () => {
+        node.off('drag', onDrag);
       });
-      
-      console.log(`Started dragging node ${nodeId} from position`, position);
     });
 
     // Track when dragging ends and save new position
@@ -457,9 +620,17 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       const node = event.target;
       const nodeId = node.id();
       const newPosition = node.position();
+      const nodeType = node.data('type');
+      
+      // Use the ref to get the truly current act ID, not stale closure
+      const currentActId = currentActIdRef.current;
+      
+      console.log(`🔄 Free event triggered for ${nodeType} node ${nodeId} at position`, newPosition);
+      console.log(`📦 Using current act from ref: ${currentActId}`);
       
       // Get the original position from the dragged nodes map
-      const originalPosition = draggedNodes.get(nodeId);
+      const originalPosition = draggedNodesRef.current.get(nodeId);
+      console.log(`📍 Original position from ref:`, originalPosition);
       
       if (originalPosition) {
         // Check if position actually changed (avoid unnecessary saves)
@@ -467,30 +638,33 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
           Math.abs(newPosition.x - originalPosition.x) > 1 ||
           Math.abs(newPosition.y - originalPosition.y) > 1;
           
+        console.log(`📏 Position changed: ${positionChanged} (delta: ${Math.abs(newPosition.x - originalPosition.x)}, ${Math.abs(newPosition.y - originalPosition.y)})`);
+          
         if (positionChanged) {
-          console.log(`Node ${nodeId} moved from`, originalPosition, 'to', newPosition);
+          console.log(`✅ Node ${nodeId} moved from`, originalPosition, 'to', newPosition);
           
           // Update the project data with new position after a short delay
           // to allow the drag operation to complete fully
           setTimeout(() => {
-            const nodeType = node.data('type');
+            console.log(`⏰ Timeout triggered, updating ${nodeType} position for ${nodeId}`);
+            
             if (nodeType === 'plot-point') {
-              updatePlotPointPosition(nodeId, { x: newPosition.x, y: newPosition.y });
+              // Create a minimal project update that preserves the current act
+              updatePlotPointPositionWithCurrentAct(nodeId, { x: newPosition.x, y: newPosition.y }, currentActId);
             } else if (nodeType === 'scene') {
               updateScenePosition(nodeId, { x: newPosition.x, y: newPosition.y });
             }
           }, 100);
+        } else {
+          console.log(`⏹️ Position didn't change enough, skipping update for ${nodeId}`);
         }
+      } else {
+        console.warn(`⚠️ No original position found for node ${nodeId} in draggedNodesRef`);
       }
       
-      // Remove this node from the dragged nodes map after a delay
-      setTimeout(() => {
-        setDraggedNodes(prev => {
-          const newMap = new Map(prev);
-          newMap.delete(nodeId);
-          return newMap;
-        });
-      }, 200);
+      // Remove this node from the dragged nodes map immediately to allow canvas rebuilds
+      console.log(`🧹 Immediately cleaning up dragged node ${nodeId} from ref`);
+      draggedNodesRef.current.delete(nodeId);
     });
 
     return () => {
@@ -518,6 +692,12 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       const node = event.target;
       const plotPointId = node.id();
       
+      console.log(`🎯 Plot point clicked: ${plotPointId}`, {
+        currentExpandedPlotPoint: expandedPlotPoint,
+        willCollapse: expandedPlotPoint === plotPointId,
+        willExpand: expandedPlotPoint !== plotPointId
+      });
+      
       // Select the node (adds yellow ring)
       node.select();
       
@@ -535,8 +715,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       
       // Toggle scene visibility for this plot point
       if (expandedPlotPoint === plotPointId) {
+        console.log(`🔽 Collapsing scenes for plot point ${plotPointId}`);
         setExpandedPlotPoint(null); // Collapse scenes
       } else {
+        console.log(`🔼 Expanding scenes for plot point ${plotPointId} (was: ${expandedPlotPoint})`);
         setExpandedPlotPoint(plotPointId); // Expand scenes
       }
     });
@@ -692,7 +874,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       }
     }
     
-    if (!cy || isUndoing || draggedNodes.size > 0) {
+    if (!cy || isUndoing || draggedNodesRef.current.size > 0) {
+      console.log(`⏸️ Canvas rebuild skipped:`, {
+        hasCy: !!cy,
+        isUndoing,
+        draggedNodesCount: draggedNodesRef.current.size,
+        draggedNodes: Array.from(draggedNodesRef.current.keys()),
+        expandedPlotPoint
+      });
       return; // Skip rebuild during undo or while any nodes are being dragged
     }
 
@@ -702,7 +891,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     const currentCenterPosition = cy.pan();
     const currentZoomLevel = cy.zoom();
 
-    const elements = generateCytoscapeElements(project, project.currentZoomLevel, expandedPlotPoint, tempNode, isInitialLoad); // Only fix overlaps on initial load
+    console.log(`🔄 Canvas rebuilding with expandedPlotPoint: ${expandedPlotPoint}`);
+
+    const elements = generateCytoscapeElements(project, project.currentZoomLevel, expandedPlotPoint, tempNode, false); // Never fix overlaps during normal updates
     cy.elements().remove();
     cy.add(elements);
     
@@ -774,7 +965,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         }
       }, 50); // Reduced delay for faster response
     }
-  }, [cy, project.plotPoints, project.acts, project.currentActId, project.currentZoomLevel, expandedPlotPoint, tempNode, selectedNode, isUndoing, draggedNodes, isInitialLoad]);
+  }, [cy, project.plotPoints, project.acts, project.currentActId, project.currentZoomLevel, expandedPlotPoint, tempNode, selectedNode, isUndoing, isInitialLoad]);
 
   // Separate useEffect for handling focusedElementId to prevent multiple triggers
   useEffect(() => {
@@ -878,6 +1069,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
       // Include scenes based on zoom level OR if this plot point is expanded
       const shouldShowScenes = zoomLevel !== ZoomLevel.STORY_OVERVIEW || expandedPlotPointId === plotPoint.id;
+      
+      console.log(`🎬 Scene visibility check for plot point ${plotPoint.id}:`, {
+        plotPointTitle: plotPoint.title,
+        zoomLevel,
+        expandedPlotPointId,
+        shouldShowScenes,
+        sceneCount: plotPoint.scenes.length
+      });
       
       if (shouldShowScenes) {
         plotPoint.scenes.forEach((scene) => {
@@ -1033,9 +1232,14 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     return [...nodes, ...edges];
   };
 
-  // Helper function to check if a scene position is valid (not undefined)
+  // Helper function to check if a scene position is valid (not undefined and has numbers)
   const isValidScenePosition = (position?: { x: number; y: number }): boolean => {
-    return !!(position && typeof position.x === 'number' && typeof position.y === 'number');
+    // Allow any numeric position, including 0,0 - only reject undefined/null/NaN positions
+    return !!(position && 
+              typeof position.x === 'number' && 
+              typeof position.y === 'number' && 
+              !isNaN(position.x) && 
+              !isNaN(position.y));
   };
 
   // Calculate position for scenes around plot point (satellite positioning)
