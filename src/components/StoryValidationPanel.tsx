@@ -7,11 +7,13 @@ import { StoryAnalysisService } from '@/services/storyAnalysisService';
 interface StoryValidationPanelProps {
   project: Project;
   onValidationUpdate?: (validation: StructureValidation) => void;
+  onSuggestionAccept?: (suggestion: any) => void;
 }
 
 const StoryValidationPanel: React.FC<StoryValidationPanelProps> = ({
   project,
-  onValidationUpdate
+  onValidationUpdate,
+  onSuggestionAccept
 }) => {
   const [validation, setValidation] = useState<StructureValidation | null>(null);
   const [showDetails, setShowDetails] = useState(true);
@@ -158,11 +160,6 @@ const StoryValidationPanel: React.FC<StoryValidationPanelProps> = ({
                         <p className="text-amber-700 mt-1">
                           💡 {warning.suggestion}
                         </p>
-                        {warning.actId && (
-                          <p className="text-amber-600 text-xs mt-1">
-                            Affects: {warning.actId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </p>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -185,7 +182,10 @@ const StoryValidationPanel: React.FC<StoryValidationPanelProps> = ({
                     className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded text-sm"
                   >
                     <span className="text-blue-800">{suggestion.message}</span>
-                    <button className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded transition-colors">
+                    <button 
+                      onClick={() => onSuggestionAccept?.(suggestion)}
+                      className="px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded transition-colors"
+                    >
                       {suggestion.action}
                     </button>
                   </div>

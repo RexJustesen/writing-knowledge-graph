@@ -107,6 +107,11 @@ const PlotPointSuggestions: React.FC<PlotPointSuggestionsProps> = ({
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-lg">{categoryConfig.icon}</span>
                       <h4 className="font-medium text-gray-900 flex-1 min-w-0">{suggestion.title}</h4>
+                      {suggestion.needsActCreation && (
+                        <span className="px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded flex-shrink-0 font-medium">
+                          + Act
+                        </span>
+                      )}
                       <span className="px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded flex-shrink-0">
                         {suggestion.suggestedActId.replace('-', ' ').replace(/\b\w/g, l => l.toUpperCase())}
                       </span>
@@ -136,9 +141,14 @@ const PlotPointSuggestions: React.FC<PlotPointSuggestionsProps> = ({
                       </div>
                       <button
                         onClick={() => handleAcceptSuggestion(suggestion)}
-                        className="px-4 py-2 text-sm text-white bg-blue-600 rounded hover:bg-blue-700 transition-colors flex-shrink-0"
+                        className={`px-4 py-2 text-sm text-white rounded transition-colors flex-shrink-0 ${
+                          suggestion.needsActCreation 
+                            ? 'bg-orange-600 hover:bg-orange-700' 
+                            : 'bg-blue-600 hover:bg-blue-700'
+                        }`}
+                        title={suggestion.needsActCreation ? 'This will create a new act and add the plot point' : 'Add this plot point'}
                       >
-                        Add
+                        {suggestion.needsActCreation ? 'Add + Act' : 'Add'}
                       </button>
                     </div>
                   </div>

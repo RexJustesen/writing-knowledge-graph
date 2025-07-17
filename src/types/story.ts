@@ -164,6 +164,7 @@ export interface QuickTemplate {
   defaultTitle: string;
   descriptionTemplate: string;
   suggestedFields: string[];
+  eventType?: EventType;
 }
 
 // Sprint 2: Story Analysis & Suggestions
@@ -181,6 +182,8 @@ export interface PlotPointSuggestion {
   eventType?: EventType; // Structural story element this suggestion represents
   sceneTemplates?: SceneTemplate[]; // Scenes to create with this plot point
   requiredCharacters?: string[]; // Character types that should exist
+  needsActCreation?: boolean; // Whether accepting this suggestion requires creating a new act
+  message?: string; // Enhanced message that includes act creation context
 }
 
 export interface SceneTemplate {
@@ -212,6 +215,8 @@ export interface ValidationSuggestion {
   message: string;
   action: string;
   templateId?: string;
+  suggestedActId?: string;
+  needsActCreation?: boolean;
 }
 
 // Project metadata for homepage display

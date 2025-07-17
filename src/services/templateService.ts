@@ -7,7 +7,8 @@ import {
   PlotPointCategory,
   PlotPointSuggestion,
   Project,
-  PlotPoint
+  PlotPoint,
+  EventType
 } from '@/types/story';
 
 // Predefined Story Templates
@@ -294,6 +295,60 @@ export const QUICK_TEMPLATES: QuickTemplate[] = [
     defaultTitle: 'Conclusion',
     descriptionTemplate: '[Conflict/situation] is resolved when [solution]. This leads to [new status quo].',
     suggestedFields: ['resolution', 'method', 'aftermath']
+  },
+  {
+    id: 'midpoint_revelation',
+    name: 'Midpoint Revelation',
+    category: PlotPointCategory.TWIST,
+    defaultTitle: 'Midpoint Revelation',
+    descriptionTemplate: 'Everything changes - new information or major setback. [What is revealed/happens] shifts the entire story direction.',
+    suggestedFields: ['revelation', 'impact', 'new_direction'],
+    eventType: EventType.MIDPOINT_REVELATION
+  },
+  {
+    id: 'midpoint',
+    name: 'Midpoint',
+    category: PlotPointCategory.TWIST,
+    defaultTitle: 'Midpoint',
+    descriptionTemplate: 'Everything changes - new information or major setback. [What is revealed/happens] shifts the entire story direction.',
+    suggestedFields: ['revelation', 'impact', 'new_direction'],
+    eventType: EventType.MIDPOINT_REVELATION
+  },
+  {
+    id: 'inciting_incident',
+    name: 'Inciting Incident',
+    category: PlotPointCategory.CONFLICT,
+    defaultTitle: 'Inciting Incident',
+    descriptionTemplate: 'The event that kicks off the main story. [What happens] forces [character] to [react/change].',
+    suggestedFields: ['trigger_event', 'character_response', 'stakes'],
+    eventType: EventType.INCITING_INCIDENT
+  },
+  {
+    id: 'climax',
+    name: 'Climax',
+    category: PlotPointCategory.CONFLICT,
+    defaultTitle: 'Climax',
+    descriptionTemplate: 'The final confrontation where [character] faces [main conflict]. The outcome determines [story resolution].',
+    suggestedFields: ['confrontation', 'stakes', 'resolution'],
+    eventType: EventType.CLIMAX
+  },
+  {
+    id: 'plot_point_1',
+    name: 'Plot Point 1',
+    category: PlotPointCategory.CONFLICT,
+    defaultTitle: 'Plot Point 1',
+    descriptionTemplate: 'The moment where [character] commits to [quest/goal]. There is no turning back.',
+    suggestedFields: ['commitment', 'point_of_no_return', 'stakes'],
+    eventType: EventType.PLOT_POINT_1
+  },
+  {
+    id: 'plot_point_2',
+    name: 'Plot Point 2',
+    category: PlotPointCategory.CONFLICT,
+    defaultTitle: 'Plot Point 2',
+    descriptionTemplate: 'The darkest moment where [character] faces [major setback]. All seems lost.',
+    suggestedFields: ['setback', 'emotional_low', 'new_approach'],
+    eventType: EventType.PLOT_POINT_2
   }
 ];
 
@@ -446,7 +501,8 @@ export class TemplateService {
       color: CATEGORY_CONFIG[template.category].color,
       actId,
       position,
-      scenes: []
+      scenes: [],
+      eventType: template.eventType
     };
   }
 }

@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { Act, Project } from '@/types/story';
+import { useProjectStore } from '@/stores/projectStore';
 
 interface ActNavigationProps {
   project: Project;
@@ -347,6 +348,11 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
   onProjectUpdate, 
   onActChange 
 }) => {
+  // Subscribe to current act ID from Zustand store
+  const currentActId = useProjectStore(state => state.project?.currentActId || '');
+  const createAct = useProjectStore(state => state.createAct);
+  const updateCurrentAct = useProjectStore(state => state.updateCurrentAct);
+  
   const [showNewActDialog, setShowNewActDialog] = useState(false);
   const [showEditActDialog, setShowEditActDialog] = useState(false);
   const [editingAct, setEditingAct] = useState<Act | null>(null);
@@ -365,28 +371,38 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
   // Sort acts by order
   const sortedActs = [...project.acts].sort((a, b) => a.order - b.order);
 
-  const handleCreateAct = (name: string, description?: string) => {
-    const newActId = `act-${Date.now()}`;
-    const newAct: Act = {
-      id: newActId,
-      name,
-      description,
-      order: Math.max(...project.acts.map(a => a.order), 0) + 1
-    };
-
-    const updatedProject: Project = {
-      ...project,
-      acts: [...project.acts, newAct],
-      currentActId: newActId, // Switch to the new act
-      lastModified: new Date()
-    };
-
-    onProjectUpdate(updatedProject);
-    onActChange(newActId);
+  const handleCreateAct = async (name: string, description?: string) => {
+    try {
+      console.log('🎭 ActNavigation: Creating new act via store:', { name, description });
+      
+      // Create act via store to persist to database
+      const newAct = await createAct({
+        title: name,
+        description: description || '',
+        order: Math.max(...project.acts.map(a => a.order), 0) + 1
+      });
+      
+      console.log('🎭 ActNavigation: Act created successfully:', { actId: newAct.id, name: newAct.name });
+      
+      // Switch to the new act
+      updateCurrentAct(newAct.id);
+      
+      // Call the parent callback if needed
+      onActChange(newAct.id);
+    } catch (error) {
+      console.error('🎭 ActNavigation: Failed to create act:', error);
+      // TODO: Show error message to user
+    }
   };
 
   const handleActClick = (actId: string) => {
-    if (actId !== project.currentActId) {
+    console.log('🎭 ActNavigation: handleActClick called:', { 
+      actId, 
+      currentActId, 
+      projectCurrentActId: project.currentActId 
+    });
+    
+    if (actId !== currentActId) {
       const updatedProject: Project = {
         ...project,
         currentActId: actId,
@@ -524,16 +540,16 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
       ...project,
       acts: project.acts.filter(a => a.id !== act.id),
       plotPoints: project.plotPoints.filter(pp => pp.actId !== act.id),
-      currentActId: act.id === project.currentActId 
+      currentActId: act.id === currentActId 
         ? project.acts.find(a => a.id !== act.id)?.id || project.acts[0]?.id || ''
-        : project.currentActId,
+        : currentActId,
       lastModified: new Date()
     };
 
     onProjectUpdate(updatedProject);
     
     // Switch to the new current act if we deleted the active one
-    if (act.id === project.currentActId) {
+    if (act.id === currentActId) {
       onActChange(updatedProject.currentActId);
     }
   };
@@ -570,7 +586,7 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
                   onClick={() => handleActClick(act.id)}
                   onContextMenu={(e) => handleRightClick(e, act)}
                   className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors flex items-center space-x-2 ${
-                    project.currentActId === act.id
+                    currentActId === act.id
                       ? 'bg-blue-600 text-white shadow-md'
                       : 'text-gray-700 hover:bg-gray-100'
                   }`}
@@ -578,7 +594,7 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
                 >
                   <span>{act.name}</span>
                   <span className={`text-xs px-1.5 py-0.5 rounded-full ${
-                    project.currentActId === act.id
+                    currentActId === act.id
                       ? 'bg-blue-500 text-blue-100'
                       : 'bg-gray-200 text-gray-600'
                   }`}>
@@ -606,15 +622,15 @@ const ActNavigation: React.FC<ActNavigationProps> = ({
         {project.acts.length > 0 && (
           <div className="mt-2 text-xs text-gray-500">
             <span className="font-medium">
-              {sortedActs.find(act => act.id === project.currentActId)?.name || 'Unknown Act'}
+              {sortedActs.find(act => act.id === currentActId)?.name || 'Unknown Act'}
             </span>
-            {sortedActs.find(act => act.id === project.currentActId)?.description && (
+            {sortedActs.find(act => act.id === currentActId)?.description && (
               <span className="ml-2">
-                • {sortedActs.find(act => act.id === project.currentActId)?.description}
+                • {sortedActs.find(act => act.id === currentActId)?.description}
               </span>
             )}
             <span className="ml-2">
-              • {getActPlotPointCount(project.currentActId)} plot point{getActPlotPointCount(project.currentActId) !== 1 ? 's' : ''}
+              • {getActPlotPointCount(currentActId)} plot point{getActPlotPointCount(currentActId) !== 1 ? 's' : ''}
             </span>
           </div>
         )}

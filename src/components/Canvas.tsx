@@ -257,6 +257,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const [draggedNodes, setDraggedNodes] = useState<Map<string, { x: number; y: number }>>(new Map()); // Track currently dragged nodes
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first project load
   const [hasTriggeredInitialZoom, setHasTriggeredInitialZoom] = useState(false); // Prevent double initial zoom
+  const lastFocusedElementRef = useRef<string | null>(null); // Track last focused element to prevent repeated focusing
   // Sprint 2: Template menu state
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [templateMenuPosition, setTemplateMenuPosition] = useState({ x: 0, y: 0 });
@@ -677,18 +678,6 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
 
   // Update graph when project data changes
   useEffect(() => {
-    console.log('🏗️ Canvas: useEffect triggered', { 
-      hasCy: !!cy, 
-      isUndoing, 
-      draggedNodesCount: draggedNodes.size,
-      isInitialLoad,
-      hasTriggeredInitialZoom,
-      plotPointsCount: project.plotPoints?.length || 0,
-      currentActId: project.currentActId,
-      currentAct: project.acts.find(a => a.id === project.currentActId)?.name,
-      tempNodeId: tempNode?.id || 'none',
-      timestamp: new Date().toLocaleTimeString()
-    });
     
     // Check if tempNode was successfully saved to backend and clear it
     if (tempNode && (tempNode.id.startsWith('temp-') || tempNode.id.startsWith('plot-'))) {
@@ -717,7 +706,9 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       }
     }
     
-    if (!cy || isUndoing || draggedNodes.size > 0) return; // Skip rebuild during undo or while any nodes are being dragged
+    if (!cy || isUndoing || draggedNodes.size > 0) {
+      return; // Skip rebuild during undo or while any nodes are being dragged
+    }
 
     // Store the currently selected node ID and position before updating
     const currentlySelectedId = selectedNode ? 
@@ -796,47 +787,71 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
           // The node should already be in the right position from the layout
         }
       }, 50); // Reduced delay for faster response
-    } 
-    // Handle focusedElementId for newly created elements (like from suggestions)
-    else if (project.focusedElementId) {
-      setTimeout(() => {
-        const nodeToFocus = cy.getElementById(project.focusedElementId!);
-        if (nodeToFocus.length > 0) {
-          // Select the node to trigger the property panel
-          nodeToFocus.select();
-          setSelectedNode(nodeToFocus);
-          
-          // Only animate if the node is not already in view or reasonably centered
-          const nodePosition = nodeToFocus.renderedPosition();
-          const viewportCenter = {
-            x: cy.width() / 2,
-            y: cy.height() / 2
-          };
-          
-          const distance = Math.sqrt(
-            Math.pow(nodePosition.x - viewportCenter.x, 2) + 
-            Math.pow(nodePosition.y - viewportCenter.y, 2)
-          );
-          
-          // Only animate if the node is far from center (more than 30% of viewport)
-          const shouldAnimate = distance > Math.min(cy.width(), cy.height()) * 0.3;
-          
-          if (shouldAnimate) {
-            cy.animate({
-              center: { eles: nodeToFocus },
-              zoom: cy.zoom() // Keep current zoom level
-            }, {
-              duration: 400, // Shorter duration to feel snappier
-              easing: 'ease-out'
-            });
-            console.log(`🎯 Canvas: Focused and centered on element ${project.focusedElementId} (distance: ${Math.round(distance)}px)`);
-          } else {
-            console.log(`🎯 Canvas: Focused on element ${project.focusedElementId} without animation (already in view, distance: ${Math.round(distance)}px)`);
-          }
-        }
-      }, 150); // Slightly longer delay to ensure layout animations complete first
     }
-  }, [cy, project, expandedPlotPoint, tempNode, selectedNode, isUndoing, draggedNodes, isInitialLoad]);
+  }, [cy, project.plotPoints, project.acts, project.currentActId, project.currentZoomLevel, expandedPlotPoint, tempNode, selectedNode, isUndoing, draggedNodes, isInitialLoad]);
+
+  // Separate useEffect for handling focusedElementId to prevent multiple triggers
+  useEffect(() => {
+    if (!cy || !project.focusedElementId) {
+      // Clear the last focused element when there's no focused element
+      if (!project.focusedElementId) {
+        lastFocusedElementRef.current = null;
+      }
+      return;
+    }
+
+    // Prevent focusing on the same element multiple times
+    if (lastFocusedElementRef.current === project.focusedElementId) {
+      console.log('🎯 Canvas: Skipping focus - already focused on element:', project.focusedElementId);
+      return;
+    }
+
+    console.log('🎯 Canvas: Handling focused element:', project.focusedElementId);
+    lastFocusedElementRef.current = project.focusedElementId;
+    
+    setTimeout(() => {
+      const nodeToFocus = cy.getElementById(project.focusedElementId!);
+      if (nodeToFocus.length > 0) {
+        // Select the node to trigger the property panel
+        nodeToFocus.select();
+        setSelectedNode(nodeToFocus);
+        
+        // Only animate if the node is not already in view or reasonably centered
+        const nodePosition = nodeToFocus.renderedPosition();
+        const viewportCenter = {
+          x: cy.width() / 2,
+          y: cy.height() / 2
+        };
+        
+        const distance = Math.sqrt(
+          Math.pow(nodePosition.x - viewportCenter.x, 2) + 
+          Math.pow(nodePosition.y - viewportCenter.y, 2)
+        );
+        
+        // Only animate if the node is far from center (more than 30% of viewport)
+        const shouldAnimate = distance > Math.min(cy.width(), cy.height()) * 0.3;
+        
+        if (shouldAnimate) {
+          cy.animate({
+            center: { eles: nodeToFocus },
+            zoom: cy.zoom() // Keep current zoom level
+          }, {
+            duration: 400, // Shorter duration to feel snappier
+            easing: 'ease-out'
+          });
+          console.log(`🎯 Canvas: Focused and centered on element ${project.focusedElementId} (distance: ${Math.round(distance)}px)`);
+        } else {
+          console.log(`🎯 Canvas: Focused on element ${project.focusedElementId} without animation (already in view, distance: ${Math.round(distance)}px)`);
+        }
+      }
+    }, 150); // Slightly longer delay to ensure layout animations complete first
+  }, [cy, project.focusedElementId]);
+
+  // Reset focus ref when project changes to prevent stale references
+  useEffect(() => {
+    console.log('🧹 Canvas: Resetting focus ref for new project:', project.id);
+    lastFocusedElementRef.current = null;
+  }, [project.id]);
 
   // Generate Cytoscape elements based on current zoom level and current act
   const generateCytoscapeElements = (
@@ -1740,9 +1755,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       {selectedNode && (
         <PropertyPanel
           selectedNode={selectedNode}
-          project={project}
           tempNode={tempNode}
-          onProjectUpdate={handleProjectUpdateFromPanel}
           onRealTimeUpdate={handleRealTimeNodeUpdate}
           onTempNodeUpdate={handleTempNodeUpdate}
           onSceneAdded={handleSceneAdded}

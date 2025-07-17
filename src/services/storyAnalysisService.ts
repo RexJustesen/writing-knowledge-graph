@@ -271,7 +271,7 @@ export class StoryAnalysisService {
   /**
    * Generate contextual reasoning for why a specific event type should be added
    */
-  private static generateReasoningForEventType(eventType: EventType, project: Project): string {
+  private static generateReasoningForEventType(eventType: EventType, project: Project, actAnalysis?: any): string {
     const plotPointCount = project.plotPoints.length;
     
     switch (eventType) {
@@ -417,6 +417,7 @@ export class StoryAnalysisService {
     // Analyze act distribution
     const actCounts = project.acts.map(act => ({
       actId: act.id,
+      actName: act.name,
       count: project.plotPoints.filter(pp => pp.actId === act.id).length
     }));
     
@@ -448,38 +449,191 @@ export class StoryAnalysisService {
     warnings: ValidationWarning[], 
     suggestions: ValidationSuggestion[]
   ) {
-    const plotPointTitles = project.plotPoints.map(pp => pp.title.toLowerCase());
+    // Get existing event types from plot points
+    const existingEventTypes = new Set(
+      project.plotPoints
+        .map(pp => pp.eventType)
+        .filter((et): et is EventType => et !== undefined)
+    );
     
-    // Check for inciting incident
-    if (!plotPointTitles.some(title => 
-      title.includes('inciting') || title.includes('incident') || title.includes('catalyst')
-    )) {
-      warnings.push({
-        type: 'missing_element',
-        message: 'No inciting incident found',
-        suggestion: 'Add an inciting incident to kick off your main story conflict',
-        actId: 'act-1',
-        severity: 'high'
-      });
+    // Analyze act structure dynamically
+    const actAnalysis = this.analyzeActStructure(project);
+    
+    // Check for essential story beats based on story length and structure
+    this.validateStoryBeats(project, existingEventTypes, actAnalysis, warnings, suggestions);
+  }
+
+  private static analyzeActStructure(project: Project) {
+    const acts = project.acts.sort((a, b) => a.order - b.order);
+    const actAnalysis = acts.map(act => {
+      const plotPoints = project.plotPoints.filter(pp => pp.actId === act.id);
+      const eventTypes = plotPoints
+        .map(pp => pp.eventType)
+        .filter((et): et is EventType => et !== undefined);
       
-      suggestions.push({
-        id: 'add-inciting-incident',
-        message: 'Consider adding an inciting incident',
-        action: 'Add plot point',
-        templateId: 'inciting-incident'
+      return {
+        act,
+        plotPointCount: plotPoints.length,
+        eventTypes: new Set(eventTypes),
+        isEmpty: plotPoints.length === 0
+      };
+    });
+
+    return {
+      totalActs: acts.length,
+      acts: actAnalysis,
+      firstAct: actAnalysis[0],
+      middleActs: actAnalysis.slice(1, -1),
+      lastAct: actAnalysis[actAnalysis.length - 1],
+      hasContent: actAnalysis.some(a => !a.isEmpty)
+    };
+  }
+
+  private static validateStoryBeats(
+    project: Project,
+    existingEventTypes: Set<EventType>,
+    actAnalysis: any,
+    warnings: ValidationWarning[], 
+    suggestions: ValidationSuggestion[]
+  ) {
+    // Essential beats for any story length
+    const essentialBeats: Array<{
+      eventType: EventType;
+      name: string;
+      description: string;
+      preferredAct: string;
+      severity: 'low' | 'medium' | 'high';
+    }> = [
+      {
+        eventType: EventType.INCITING_INCIDENT,
+        name: 'Inciting Incident',
+        description: 'The event that kicks off your main story conflict',
+        preferredAct: 'first',
+        severity: 'high'
+      },
+      {
+        eventType: EventType.CLIMAX,
+        name: 'Climax',
+        description: 'The peak moment of conflict and tension',
+        preferredAct: 'last',
+        severity: 'high'
+      }
+    ];
+
+    // Additional beats for longer stories
+    if (actAnalysis.totalActs >= 2) {
+      essentialBeats.push({
+        eventType: EventType.PLOT_POINT_1,
+        name: 'Plot Point 1',
+        description: 'Major story turning point that propels the narrative forward',
+        preferredAct: actAnalysis.totalActs === 2 ? 'first' : 'first',
+        severity: 'medium'
       });
     }
-    
-    // Check for climax
-    const act3Points = project.plotPoints.filter(pp => pp.actId === 'act-3');
-    if (act3Points.length === 0) {
-      warnings.push({
-        type: 'missing_element',
-        message: 'No climax or resolution found',
-        suggestion: 'Add a climactic moment to resolve your main conflict',
-        actId: 'act-3',
-        severity: 'high'
+
+    if (actAnalysis.totalActs >= 3) {
+      essentialBeats.push({
+        eventType: EventType.MIDPOINT_REVELATION,
+        name: 'Midpoint Revelation',
+        description: 'Major revelation or shift that changes everything',
+        preferredAct: 'middle',
+        severity: 'medium'
       });
+      
+      essentialBeats.push({
+        eventType: EventType.PLOT_POINT_2,
+        name: 'Plot Point 2',
+        description: 'Final major turn before the climax',
+        preferredAct: actAnalysis.totalActs > 3 ? 'middle' : 'middle',
+        severity: 'medium'
+      });
+    }
+
+    // Check for missing essential beats
+    essentialBeats.forEach(beat => {
+      if (!existingEventTypes.has(beat.eventType)) {
+        const targetAct = this.getTargetActForBeat(beat.preferredAct, actAnalysis);
+        const suggestedActId = this.getSuggestedActId(beat.preferredAct, actAnalysis);
+        
+        warnings.push({
+          type: 'missing_element',
+          message: `No ${beat.name} found`,
+          suggestion: beat.description,
+          actId: targetAct?.act.id || actAnalysis.firstAct?.act.id || 'unknown',
+          severity: beat.severity
+        });
+
+        // Create suggestion with intelligent act handling
+        const suggestion: any = {
+          id: `add-${beat.eventType}`,
+          message: `Consider adding a ${beat.name}`,
+          action: 'Add plot point',
+          templateId: beat.eventType,
+          suggestedActId,
+          needsActCreation: this.needsActCreation(beat.preferredAct, actAnalysis)
+        };
+
+        // Add context about act creation if needed
+        if (suggestion.needsActCreation) {
+          const actNumber = this.getActNumberForPosition(beat.preferredAct, actAnalysis);
+          suggestion.message = `Add a ${beat.name} (will create Act ${actNumber} if needed)`;
+          suggestion.description = `${beat.description} This will automatically create Act ${actNumber} to organize your story structure.`;
+        }
+
+        suggestions.push(suggestion);
+      }
+    });
+  }
+
+  private static getSuggestedActId(preferredPosition: string, actAnalysis: any): string {
+    const targetAct = this.getTargetActForBeat(preferredPosition, actAnalysis);
+    if (targetAct) {
+      return targetAct.act.id;
+    }
+    
+    // If no act exists, suggest a template act ID for creation
+    const actNumber = this.getActNumberForPosition(preferredPosition, actAnalysis);
+    return `act-${actNumber}`;
+  }
+
+  private static needsActCreation(preferredPosition: string, actAnalysis: any): boolean {
+    const targetAct = this.getTargetActForBeat(preferredPosition, actAnalysis);
+    return !targetAct;
+  }
+
+  private static getActNumberForPosition(preferredPosition: string, actAnalysis: any): number {
+    switch (preferredPosition) {
+      case 'first':
+        return 1;
+      case 'middle':
+        // For middle beats, suggest Act 2 if only 1 act exists, or the appropriate middle act
+        if (actAnalysis.totalActs === 1) {
+          return 2; // Suggest creating Act 2
+        }
+        return Math.ceil((actAnalysis.totalActs + 1) / 2); // Middle of expanded structure
+      case 'last':
+        // For last beats, suggest the next act number
+        return actAnalysis.totalActs + 1;
+      default:
+        return 1;
+    }
+  }
+
+  private static getTargetActForBeat(preferredPosition: string, actAnalysis: any) {
+    switch (preferredPosition) {
+      case 'first':
+        return actAnalysis.firstAct;
+      case 'middle':
+        // For middle beats, prefer the actual middle act, or second act if only 2 acts
+        if (actAnalysis.middleActs.length > 0) {
+          const middleIndex = Math.floor(actAnalysis.middleActs.length / 2);
+          return actAnalysis.middleActs[middleIndex];
+        }
+        return actAnalysis.acts[1] || actAnalysis.firstAct; // Fallback to second act
+      case 'last':
+        return actAnalysis.lastAct;
+      default:
+        return actAnalysis.firstAct;
     }
   }
 
@@ -490,11 +644,11 @@ export class StoryAnalysisService {
     suggestions: ValidationSuggestion[]
   ) {
     // Check for overcrowded acts
-    actCounts.forEach(({ actId, count }) => {
+    actCounts.forEach(({ actId, actName, count }) => {
       if (count > 6) {
         warnings.push({
           type: 'overcrowded_act',
-          message: `Act ${actId} has too many plot points (${count})`,
+          message: `${actName} has too many plot points (${count})`,
           suggestion: 'Consider consolidating or moving some plot points to other acts',
           actId,
           severity: 'medium'
@@ -503,7 +657,16 @@ export class StoryAnalysisService {
     });
     
     // Check for empty Act II (common problem)
-    const act2Count = actCounts.find(ac => ac.actId === 'act-2')?.count || 0;
+    // Look for the second act by position or name (Act II, Act 2)
+    const secondAct = project.acts.find(act => 
+      act.name.toLowerCase().includes('ii') || 
+      act.name.toLowerCase().includes('2') ||
+      act.name.toLowerCase().includes('act ii') ||
+      act.name.toLowerCase().includes('act 2')
+    ) || project.acts[1]; // Fallback to second act by index
+    
+    const act2Count = secondAct ? 
+      actCounts.find(ac => ac.actId === secondAct.id)?.count || 0 : 0;
     if (act2Count === 0 && project.plotPoints.length > 2) {
       warnings.push({
         type: 'pacing_issue',
@@ -513,11 +676,31 @@ export class StoryAnalysisService {
         severity: 'high'
       });
       
+      // Find Act II (second act) or fall back to creating act-2
+      let targetActId = 'act-2'; // Default template for act creation
+      let needsActCreation = false;
+      
+      if (secondAct) {
+        // Use the existing second act
+        targetActId = secondAct.id;
+      } else if (project.acts.length >= 2) {
+        // Use the actual second act if it exists
+        const fallbackSecondAct = project.acts[1];
+        if (fallbackSecondAct) {
+          targetActId = fallbackSecondAct.id;
+        }
+      } else {
+        // Need to create Act II
+        needsActCreation = true;
+      }
+      
       suggestions.push({
         id: 'add-midpoint',
         message: 'Add a midpoint to Act II',
         action: 'Add plot point',
-        templateId: 'midpoint'
+        templateId: 'midpoint',
+        suggestedActId: targetActId,
+        needsActCreation: needsActCreation
       });
     }
   }
@@ -542,6 +725,52 @@ export class StoryAnalysisService {
   }
 
   private static identifyStoryStrengths(project: Project, strengths: string[]) {
+    const actAnalysis = this.analyzeActStructure(project);
+    const existingEventTypes = new Set(
+      project.plotPoints
+        .map(pp => pp.eventType)
+        .filter((et): et is EventType => et !== undefined)
+    );
+    
+    // Analyze story structure strengths
+    if (actAnalysis.hasContent) {
+      const actsWithContent = actAnalysis.acts.filter(a => !a.isEmpty).length;
+      if (actsWithContent === actAnalysis.totalActs) {
+        if (actAnalysis.totalActs === 1) {
+          strengths.push('Focused single-act structure with complete content');
+        } else if (actAnalysis.totalActs === 2) {
+          strengths.push('Well-developed two-act structure with content in both acts');
+        } else if (actAnalysis.totalActs === 3) {
+          strengths.push('Complete three-act structure with content in each act');
+        } else {
+          strengths.push(`Comprehensive ${actAnalysis.totalActs}-act structure with content throughout`);
+        }
+      } else if (actsWithContent > 1) {
+        strengths.push(`Strong foundation with content in ${actsWithContent} of ${actAnalysis.totalActs} acts`);
+      }
+    }
+
+    // Check for essential story beats coverage
+    const essentialBeats = [EventType.INCITING_INCIDENT, EventType.CLIMAX];
+    const hasEssentialBeats = essentialBeats.every(beat => existingEventTypes.has(beat));
+    
+    if (hasEssentialBeats) {
+      strengths.push('Core story structure with essential dramatic beats');
+    }
+
+    // Check for advanced story beats
+    const advancedBeats = [
+      EventType.PLOT_POINT_1, 
+      EventType.MIDPOINT_REVELATION, 
+      EventType.PLOT_POINT_2
+    ];
+    const advancedBeatCount = advancedBeats.filter(beat => existingEventTypes.has(beat)).length;
+    
+    if (advancedBeatCount >= 2) {
+      strengths.push('Sophisticated plot structure with multiple turning points');
+    }
+
+    // Analyze plot point variety and depth
     const categories = project.plotPoints.map(pp => pp.category).filter(Boolean);
     const uniqueCategories = [...new Set(categories)];
     
@@ -552,17 +781,22 @@ export class StoryAnalysisService {
     if (project.plotPoints.length >= 6) {
       strengths.push('Detailed story structure with good complexity');
     }
-    
-    const hasAllActs = project.acts.every(act => 
-      project.plotPoints.some(pp => pp.actId === act.id)
-    );
-    
-    if (hasAllActs) {
-      strengths.push('Complete three-act structure with content in each act');
-    }
-    
+
+    // Character development strengths
     if (project.characters.length >= 3) {
       strengths.push('Rich character cast for story development');
+    }
+
+    // Genre-specific strengths
+    const genreEventTypes = [
+      EventType.MEET_CUTE, EventType.FALLING_IN_LOVE, EventType.MAJOR_CONFLICT, // Romance
+      EventType.CRIME_DISCOVERY, EventType.INVESTIGATION_BEGINS, EventType.FALSE_LEAD, // Mystery
+      EventType.KEY_REVELATION, EventType.UNMASKING // Mystery/Thriller
+    ];
+    
+    const genreSpecificCount = genreEventTypes.filter(beat => existingEventTypes.has(beat)).length;
+    if (genreSpecificCount >= 2) {
+      strengths.push('Strong genre-specific story elements and conventions');
     }
   }
 
@@ -583,11 +817,38 @@ export class StoryAnalysisService {
           break;
       }
     });
-    
-    // Bonus points for completeness
-    if (project.plotPoints.length >= 5) score += 10;
-    if (project.characters.length >= 2) score += 5;
-    
+
+    // Analyze structure and give appropriate bonuses
+    const actAnalysis = this.analyzeActStructure(project);
+    const existingEventTypes = new Set(
+      project.plotPoints
+        .map(pp => pp.eventType)
+        .filter((et): et is EventType => et !== undefined)
+    );
+
+    // Bonus for having content in acts (scaled by number of acts)
+    const actsWithContent = actAnalysis.acts.filter(a => !a.isEmpty).length;
+    if (actsWithContent > 0) {
+      score += Math.min(10, actsWithContent * 3); // Up to 10 points for act coverage
+    }
+
+    // Bonus for essential story beats
+    if (existingEventTypes.has(EventType.INCITING_INCIDENT)) score += 5;
+    if (existingEventTypes.has(EventType.CLIMAX)) score += 5;
+
+    // Bonus for plot complexity (but not too much)
+    if (project.plotPoints.length >= 3) score += 5;
+    if (project.plotPoints.length >= 6) score += 5;
+
+    // Bonus for character development
+    if (project.characters.length >= 2) score += 3;
+    if (project.characters.length >= 4) score += 2;
+
+    // Bonus for EventType usage (shows structural awareness)
+    const eventTypeCount = existingEventTypes.size;
+    if (eventTypeCount >= 2) score += 5;
+    if (eventTypeCount >= 4) score += 5;
+
     return Math.max(0, Math.min(100, score));
   }
 
