@@ -952,6 +952,11 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
           });
         }
         setIsInitialLoad(false);
+        
+        // Clear the initial zoom flag after animation completes to allow future focus animations
+        setTimeout(() => {
+          setHasTriggeredInitialZoom(false);
+        }, 600); // 500ms animation + 100ms buffer
       }, 100);
     } else if (isInitialLoad && hasTriggeredInitialZoom) {
       console.log('🔄 Canvas: Skipping initial zoom - already triggered');
@@ -999,6 +1004,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         setSelectedNode(nodeToFocus);
         
         // Only animate if the node is not already in view or reasonably centered
+        // BUT skip animation if we just triggered an initial zoom to avoid double animation
         const nodePosition = nodeToFocus.renderedPosition();
         const viewportCenter = {
           x: cy.width() / 2,
@@ -1011,7 +1017,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
         );
         
         // Only animate if the node is far from center (more than 30% of viewport)
-        const shouldAnimate = distance > Math.min(cy.width(), cy.height()) * 0.3;
+        // AND we haven't just triggered an initial zoom animation
+        const shouldAnimate = distance > Math.min(cy.width(), cy.height()) * 0.3 && !hasTriggeredInitialZoom;
         
         if (shouldAnimate) {
           cy.animate({
@@ -1023,7 +1030,8 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
           });
           console.log(`🎯 Canvas: Focused and centered on element ${project.focusedElementId} (distance: ${Math.round(distance)}px)`);
         } else {
-          console.log(`🎯 Canvas: Focused on element ${project.focusedElementId} without animation (already in view, distance: ${Math.round(distance)}px)`);
+          const reason = hasTriggeredInitialZoom ? 'initial zoom in progress' : `already in view, distance: ${Math.round(distance)}px`;
+          console.log(`🎯 Canvas: Focused on element ${project.focusedElementId} without animation (${reason})`);
         }
       }
     }, 150); // Slightly longer delay to ensure layout animations complete first
