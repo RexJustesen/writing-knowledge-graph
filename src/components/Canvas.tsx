@@ -6,6 +6,7 @@ import { PlotPoint, ZoomLevel, Project, QuickTemplate } from '@/types/story';
 import PropertyPanel from './PropertyPanel';
 import QuickTemplateMenu from './QuickTemplateMenu';
 import { TemplateService } from '@/services/templateService';
+import { useProjectStore } from '@/stores/projectStore';
 
 // Helper function to detect and fix overlapping plot points
 const fixOverlappingPlotPoints = (plotPoints: PlotPoint[]): PlotPoint[] => {
@@ -255,6 +256,10 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
   const [isInitialLoad, setIsInitialLoad] = useState(true); // Track if this is the first project load
   const [hasTriggeredInitialZoom, setHasTriggeredInitialZoom] = useState(false); // Prevent double initial zoom
   const lastFocusedElementRef = useRef<string | null>(null); // Track last focused element to prevent repeated focusing
+  
+  // Project store hooks
+  const createPlotPoint = useProjectStore(state => state.createPlotPoint);
+  
   // Sprint 2: Template menu state
   const [showTemplateMenu, setShowTemplateMenu] = useState(false);
   const [templateMenuPosition, setTemplateMenuPosition] = useState({ x: 0, y: 0 });
@@ -1810,7 +1815,7 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
     setShowTemplateMenu(true);
   };
 
-  const handleTemplateSelect = (template: QuickTemplate | null) => {
+  const handleTemplateSelect = async (template: QuickTemplate | null) => {
     if (!pendingPosition) return;
 
     // Get current act plot points for smart positioning
@@ -1825,66 +1830,71 @@ const Canvas = forwardRef<CanvasHandle, CanvasProps>(({ project, onProjectUpdate
       existingCount: currentActPlotPoints.length
     });
     
-    let newPlotPoint: PlotPoint;
-    
-    if (template) {
-      // Create plot point from template
-      const templateData = TemplateService.applyQuickTemplate(
-        template.id, 
-        project.currentActId, 
-        smartPosition // Use smart position instead of pendingPosition
-      );
+    try {
+      let plotPointData: any;
       
-      newPlotPoint = {
-        id: `plot-${Date.now()}`,
-        ...templateData,
-        scenes: [],
-        // Ensure all required fields are present
-        title: templateData.title || 'New Plot Point',
-        description: templateData.description || '',
-        guidance: templateData.guidance || '',
-        position: smartPosition, // Use smart position
-        actId: project.currentActId
-      } as PlotPoint;
-    } else {
-      // Create blank plot point
-      newPlotPoint = {
-        id: `plot-${Date.now()}`,
-        title: 'New Plot Point',
-        description: '',
-        position: smartPosition, // Use smart position
-        color: '#3b82f6',
-        actId: project.currentActId,
-        scenes: []
-      };
-    }
-    
-    // Remove temp node if it exists
-    if (tempNode && cy) {
-      cy.getElementById(tempNode.id).remove();
-      setTempNode(null);
-    }
+      if (template) {
+        // Create plot point from template
+        const templateData = TemplateService.applyQuickTemplate(
+          template.id, 
+          project.currentActId, 
+          smartPosition // Use smart position instead of pendingPosition
+        );
+        
+        plotPointData = {
+          actId: project.currentActId,
+          title: templateData.title || 'New Plot Point',
+          description: templateData.description || '',
+          guidance: templateData.guidance || '',
+          position: smartPosition, // Use smart position
+          eventType: templateData.eventType
+        };
+      } else {
+        // Create blank plot point
+        plotPointData = {
+          actId: project.currentActId,
+          title: 'New Plot Point',
+          description: '',
+          position: smartPosition, // Use smart position
+          eventType: undefined
+        };
+      }
 
-    // Add the plot point to the project immediately
-    const updatedProject = {
-      ...project,
-      plotPoints: [...project.plotPoints, newPlotPoint],
-      focusedElementId: newPlotPoint.id, // Focus on the newly created plot point
-      lastModified: new Date()
-    };
+      // Remove temp node if it exists
+      if (tempNode && cy) {
+        cy.getElementById(tempNode.id).remove();
+        setTempNode(null);
+      }
 
-    console.log(`🎯 Canvas: Created plot point "${newPlotPoint.title}" and focusing on it`);
-    onProjectUpdate(updatedProject);
-    
-    // Clear the focused state after the canvas has processed the focus
-    setTimeout(() => {
-      const clearedFocusProject = {
-        ...updatedProject,
-        focusedElementId: undefined,
+      // Use the store's createPlotPoint function to properly save to database
+      console.log('🎯 Canvas: Calling store createPlotPoint with data:', plotPointData);
+      const newPlotPoint = await createPlotPoint(plotPointData);
+      
+      console.log(`🎯 Canvas: Created plot point "${newPlotPoint.title}" with database ID: ${newPlotPoint.id}`);
+      
+      // Focus on the newly created plot point
+      const updatedProject = {
+        ...project,
+        plotPoints: [...project.plotPoints.filter(pp => pp.id !== newPlotPoint.id), newPlotPoint], // Replace if exists, otherwise add
+        focusedElementId: newPlotPoint.id,
         lastModified: new Date()
       };
-      onProjectUpdate(clearedFocusProject);
-    }, 500);
+      
+      onProjectUpdate(updatedProject);
+      
+      // Clear the focused state after the canvas has processed the focus
+      setTimeout(() => {
+        const clearedFocusProject = {
+          ...updatedProject,
+          focusedElementId: undefined,
+          lastModified: new Date()
+        };
+        onProjectUpdate(clearedFocusProject);
+      }, 500);
+    } catch (error) {
+      console.error('🎯 Canvas: Failed to create plot point:', error);
+      // TODO: Show error message to user
+    }
 
     setPendingPosition(null);
   };
